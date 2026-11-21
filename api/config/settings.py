@@ -149,6 +149,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # every list API: ?page_number=&page_size=&search_term= (common/pagination.py)
+    'DEFAULT_PAGINATION_CLASS': 'common.pagination.Pagination',
+    'DEFAULT_FILTER_BACKENDS': ['common.pagination.SearchTermFilter'],
     'DEFAULT_THROTTLE_RATES': {
         'login': '10/min',
     },

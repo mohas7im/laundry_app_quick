@@ -168,6 +168,7 @@ class StaffUserViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     """Users menu: view/create/edit/delete accounts. Only owners may change an owner's account."""
     serializer_class = StaffUserSerializer
     permission_classes = [menu_permission('users')]
+    search_fields = ['full_name', 'email', 'phone']
 
     def get_queryset(self):
         return User.objects.prefetch_related('user_roles__role', 'user_roles__branch')

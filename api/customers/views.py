@@ -15,6 +15,7 @@ class CustomerViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.select_related('branch')
     serializer_class = CustomerSerializer
     permission_classes = [branch_menu_permission('customers')]
+    search_fields = ['name', 'phone', 'email']
     referenced_message = 'This customer has orders, so they can\'t be deleted.'
 
     def perform_create(self, serializer):

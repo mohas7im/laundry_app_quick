@@ -29,6 +29,7 @@ def menu_tree(menus):
 
 class RoleViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     queryset = Role.objects.all()
+    search_fields = ['name', 'description']
     serializer_class = RoleSerializer
     # the users form and the permissions page also need the role list
     permission_classes = [menu_permission('roles', view_also=['users.view', 'permissions.view'])]
