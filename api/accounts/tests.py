@@ -1,4 +1,5 @@
 from datetime import timedelta
+from io import StringIO
 
 from django.conf import settings
 from rest_framework.test import APIClient, APITestCase
@@ -91,6 +92,17 @@ class AuthFlowTests(APITestCase):
         token.set_exp(lifetime=-timedelta(seconds=1))
         self.client.cookies[ACCESS] = str(token)
         self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+    def test_create_owner_command(self):
+        from django.core.management import call_command
+        call_command('create_owner', email='Boss@Shop.com', name='Boss', password='Owner-pass-123', stdout=StringIO())
+        owner = User.objects.get(email='boss@shop.com')
+        self.assertEqual(owner.role, User.Role.OWNER)
+        self.assertTrue(owner.check_password('Owner-pass-123'))
+        self.assertFalse(hasattr(owner, 'is_superuser'))
+
+    def test_admin_url_removed(self):
+        self.assertEqual(self.client.get('/admin/').status_code, 404)
 
     def test_access_token_lifetime_is_15_minutes(self):
         token = AccessToken.for_user(self.user)
