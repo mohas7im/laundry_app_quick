@@ -1,50 +1,35 @@
 """
-Source of truth for permissions.
+Menus for the pages built into the app ("system menus").
 
-Code checks these permission codes, so they are defined here and written to the
-`permissions` table by `roles.seed.sync_permissions` (run by a migration, and by
-`python manage.py sync_rbac` after you add a code here). Roles are created by
-the owner in the app; only the Owner role is built in (see create_owner).
+They are written to the `menus` table — with one `permissions` row per action —
+by `roles.seed.sync_system_menus` (migration 0003, and `python manage.py sync_rbac`
+after you add a page here). The owner can rename, re-icon and reorder them in the
+Menus page, but not delete them. Other menus are created in the app.
 """
 
-PERMISSION_GROUPS = [
-    ('Administration', [
-        ('branches.manage', 'Create, edit and deactivate branches'),
-        ('users.manage', 'Create and edit staff accounts and their access'),
-        ('roles.manage', 'Create and edit roles and their permissions'),
-    ]),
-    ('Dashboard', [
-        ('dashboard.view', 'View dashboard'),
-    ]),
-    ('Orders', [
-        ('orders.view', 'View orders'),
-        ('orders.create', 'Create orders'),
-        ('orders.edit', 'Edit orders'),
-        ('orders.delete', 'Delete orders'),
-        ('orders.update_status', 'Mark cleaned, ready and collected'),
-    ]),
-    ('Payments', [
-        ('payments.take', 'Take payments'),
-        ('payments.discount', 'Give discounts'),
-        ('payments.refund', 'Issue refunds'),
-    ]),
-    ('Customers', [
-        ('customers.view', 'View customers'),
-        ('customers.create', 'Add customers'),
-        ('customers.edit', 'Edit customers'),
-        ('customers.delete', 'Delete customers'),
-    ]),
-    ('Products', [
-        ('products.view', 'View products and prices'),
-        ('products.manage', 'Add and edit products and prices'),
-    ]),
-    ('Deliveries', [
-        ('deliveries.view', 'View pickups and deliveries'),
-        ('deliveries.update', 'Update pickup and delivery status'),
-    ]),
-    ('Reports', [
-        ('reports.view', 'View reports'),
-    ]),
+CRUD = ['view', 'create', 'edit', 'delete']
+
+ACTION_LABELS = {
+    'view': 'View',
+    'create': 'Create',
+    'edit': 'Edit',
+    'delete': 'Delete',
+}
+
+# code, name, path, icon (lucide name), parent code, sort order, actions
+SYSTEM_MENUS = [
+    ('dashboard', 'Dashboard', '/', 'layout-dashboard', None, 0, ['view']),
+    ('administration', 'Administration', '', 'settings', None, 90, []),
+    ('branches', 'Branches', '/branches', 'building-2', 'administration', 1, CRUD),
+    ('roles', 'Roles & Permissions', '/roles', 'shield-check', 'administration', 2, CRUD),
+    ('users', 'Users', '/users', 'users', 'administration', 3, CRUD),
+    ('menus', 'Menus', '/menus', 'list-tree', 'administration', 4, CRUD),
 ]
 
-ALL_PERMISSIONS = frozenset(code for _, perms in PERMISSION_GROUPS for code, _ in perms)
+
+def action_label(action):
+    return ACTION_LABELS.get(action, action.replace('_', ' ').capitalize())
+
+
+def permission_description(action, menu_name):
+    return f'{action_label(action)} {menu_name}'

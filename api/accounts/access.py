@@ -5,8 +5,12 @@ Access control, from the RBAC tables:
                  │ branch_id NULL = organization-wide, else that branch only
     users ─< user_branch_assignments >─ branches
 
+Permissions are "<menu code>.<action>" (see the menus table).
+
 - get_access(user)                   → the user's branches, roles and permissions (DB)
-- org_permission('users.manage')     → permission class for organization-level actions (DB)
+- menu_permission('branches')        → admin API: GET needs branches.view, POST .create,
+                                       PUT/PATCH .edit, DELETE .delete (org-wide roles, DB)
+- org_permission('users.reset')      → one specific organization-level permission (DB)
 - branch_permission('orders.create') → permission class for branch work (access-token claims)
 - get_active_branch_id(request)      → branch id from the token, for filtering data
 """
@@ -16,7 +20,6 @@ from rest_framework import exceptions, permissions
 
 from branches.models import Branch
 from roles.models import Permission, RolePermission, UserRole
-from roles.registry import ALL_PERMISSIONS
 
 
 @dataclass
@@ -104,19 +107,12 @@ def get_active_branch(request):
     return request._active_branch
 
 
-def _check_codes(codes):
-    unknown = set(codes) - ALL_PERMISSIONS
-    if unknown:
-        raise ValueError(f'Unknown permission codes: {unknown}')
-
-
 def org_permission(*codes):
     """
     Permission class for organization-level actions (branches, roles, users).
     Checked against the database, not the token: these are too powerful to trust a stale claim.
     Only organization-wide roles count.
     """
-    _check_codes(codes)
 
     class HasOrgPermission(permissions.BasePermission):
         message = 'You do not have permission to do this.'
@@ -134,7 +130,6 @@ def org_permission(*codes):
 
 def branch_permission(*codes):
     """Permission class for branch work: the access token must contain ALL `codes`."""
-    _check_codes(codes)
 
     class HasBranchPermission(permissions.BasePermission):
         message = 'You do not have permission to do this in this branch.'
@@ -147,3 +142,35 @@ def branch_permission(*codes):
 
     HasBranchPermission.__name__ = f'HasBranchPermission({", ".join(codes)})'
     return HasBranchPermission
+
+
+METHOD_ACTIONS = {
+    'GET': 'view', 'HEAD': 'view', 'OPTIONS': 'view',
+    'POST': 'create', 'PUT': 'edit', 'PATCH': 'edit', 'DELETE': 'delete',
+}
+
+
+def menu_permission(menu_code, view_also=()):
+    """
+    Permission class for an admin page's API, from its menu's actions.
+    `view_also`: other permissions that may read (GET) this data, e.g. the users
+    form needs the branch and role lists: menu_permission('roles', view_also=['users.view']).
+    Organization-wide roles only, checked in the database.
+    """
+
+    class HasMenuPermission(permissions.BasePermission):
+        message = 'You do not have permission to do this.'
+
+        def has_permission(self, request, view):
+            if not (request.user and request.user.is_authenticated):
+                return False
+            if not hasattr(request, '_access'):
+                request._access = get_access(request.user)
+            have = request._access.org_permissions
+            action = METHOD_ACTIONS.get(request.method)
+            if f'{menu_code}.{action}' in have:
+                return True
+            return action == 'view' and any(code in have for code in view_also)
+
+    HasMenuPermission.__name__ = f'HasMenuPermission({menu_code})'
+    return HasMenuPermission

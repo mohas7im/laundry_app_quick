@@ -7,13 +7,24 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken
 
 from branches.models import Branch, UserBranchAssignment
-from roles.models import Permission, Role, RolePermission, UserRole
-from roles.seed import ensure_owner_role
+from roles.models import Menu, Permission, Role, RolePermission, UserRole
+from roles.seed import ensure_owner_role, sync_menu_permissions
 from .access import branch_permission, get_access
 from .models import User
 from .tokens import build_tokens
 
 PASSWORD = 'Str0ng-pass-123'
+
+
+CRUD = ['view', 'create', 'edit', 'delete']
+ADMIN_CODES = [f'{m}.{a}' for m in ('branches', 'users', 'roles', 'menus') for a in CRUD]
+
+
+def make_menu(code, actions, path=None, parent=None):
+    menu = Menu.objects.create(code=code, name=code.title(), path=f'/{code}' if path is None else path,
+                               parent=parent)
+    sync_menu_permissions(Permission, menu, actions)
+    return menu
 
 
 def make_role(name, codes):
@@ -27,6 +38,9 @@ def make_role(name, codes):
 class Base(APITestCase):
     def setUp(self):
         cache.clear()  # reset the login rate limit between tests
+        # menus a future Orders/Reports page would add; system menus come from the migration
+        make_menu('orders', CRUD)
+        make_menu('reports', ['view'])
         self.owner_role = ensure_owner_role(Role, RolePermission, Permission)
         self.owner = User.objects.create_user(email='owner@shop.com', password=PASSWORD, full_name='Owner')
         UserRole.objects.create(user=self.owner, role=self.owner_role)
@@ -35,7 +49,7 @@ class Base(APITestCase):
         self.shj = Branch.objects.create(name='Sharjah', code='SHJ1')
         self.cashier = make_role('Cashier', ['orders.view', 'orders.create'])
         self.manager = make_role('Branch Manager', ['orders.view', 'orders.create', 'orders.delete'])
-        self.admin = make_role('Admin', ['branches.manage', 'users.manage', 'roles.manage'])
+        self.admin = make_role('Admin', ADMIN_CODES)
 
     def as_owner(self):
         self.client.force_authenticate(self.owner)
@@ -67,8 +81,11 @@ class SchemaRuleTests(Base):
         UserBranchAssignment.objects.filter(user=user, branch=self.shj).delete()
         self.assertEqual(list(user.user_roles.values_list('branch__code', flat=True)), ['DXB1'])
 
-    def test_permissions_table_loaded(self):
-        self.assertEqual(Permission.objects.count(), 21)
+    def test_system_menus_loaded(self):
+        codes = set(Menu.objects.filter(is_system=True).values_list('code', flat=True))
+        self.assertEqual(codes, {'dashboard', 'administration', 'branches', 'roles', 'users', 'menus'})
+        self.assertEqual(Permission.objects.filter(menu__code='branches').count(), 4)
+        self.assertTrue(Permission.objects.filter(code='dashboard.view').exists())
 
 
 class AccessTests(Base):
@@ -89,7 +106,7 @@ class AccessTests(Base):
         user = self.make_user(roles=[(self.admin, None), (self.cashier, self.dxb)])
         access = get_access(user)
         self.assertEqual(len(access.branches), 2)                       # all active branches
-        self.assertIn('users.manage', access.branch(self.shj.id).permissions)
+        self.assertIn('users.edit', access.branch(self.shj.id).permissions)
         self.assertIn('orders.create', access.branch(self.dxb.id).permissions)
         self.assertNotIn('orders.create', access.branch(self.shj.id).permissions)
 
@@ -133,7 +150,7 @@ class BranchApiTests(Base):
             self.assertEqual(self.client.get(url).status_code, 403, url)
 
     def test_branch_scoped_admin_permission_does_not_count(self):
-        # users.manage given only inside one branch must not unlock organization-level APIs
+        # admin permissions given only inside one branch must not unlock organization-level APIs
         user = self.make_user(roles=[(self.admin, self.dxb)])
         self.client.force_authenticate(user)
         self.assertEqual(self.client.get('/api/users/').status_code, 403)
@@ -143,10 +160,10 @@ class RoleApiTests(Base):
     def test_create_with_permissions(self):
         self.as_owner()
         res = self.client.post('/api/roles/', {
-            'name': 'Ironing', 'permissions': ['orders.view', 'orders.update_status', 'orders.view'],
+            'name': 'Ironing', 'permissions': ['orders.view', 'orders.edit', 'orders.view'],
         }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['permissions'], ['orders.update_status', 'orders.view'])
+        self.assertEqual(res.data['permissions'], ['orders.edit', 'orders.view'])
         self.assertFalse(res.data['is_system_role'])
         self.assertEqual(RolePermission.objects.filter(role_id=res.data['id']).count(), 2)
 
@@ -170,12 +187,14 @@ class RoleApiTests(Base):
         self.assertEqual(self.client.delete(f'/api/roles/{self.cashier.id}/').status_code, 400)
         self.assertEqual(self.client.delete(f'/api/roles/{self.manager.id}/').status_code, 204)
 
-    def test_permission_list_grouped(self):
+    def test_permission_list_is_menu_tree(self):
         self.as_owner()
-        groups = self.client.get('/api/permissions/').data
-        self.assertEqual(groups[0]['module'], 'Administration')
-        orders = next(g for g in groups if g['module'] == 'Orders')
-        self.assertIn({'code': 'orders.create', 'label': 'Create orders'}, orders['permissions'])
+        rows = self.client.get('/api/permissions/').data
+        names = [(r['menu']['code'], r['menu']['depth']) for r in rows]
+        self.assertLess(names.index(('administration', 0)), names.index(('branches', 1)))
+        branches = next(r for r in rows if r['menu']['code'] == 'branches')
+        self.assertEqual({p['action'] for p in branches['permissions']}, set(CRUD))
+        self.assertIn({'code': 'branches.create', 'action': 'create', 'label': 'Create'}, branches['permissions'])
 
 
 class UserApiTests(Base):
@@ -295,7 +314,7 @@ class TokenClaimTests(Base):
         c = self.claims()
         self.assertTrue(c['is_owner'])
         self.assertIsNone(c['active_branch_id'])
-        self.assertIn('branches.manage', c['permissions'])
+        self.assertIn('branches.create', c['permissions'])
 
     def test_refresh_recomputes_permissions(self):
         self.login()
@@ -323,3 +342,82 @@ class TokenClaimTests(Base):
         self.assertEqual(call(self.staff, self.shj.id), 200)   # manager in Sharjah
         self.assertEqual(call(self.owner, self.dxb.id), 200)   # owner
         self.assertEqual(call(self.make_user('nobranch@shop.com')), 400)
+
+
+class MenuPermissionTests(Base):
+    """Admin APIs check the action that matches the HTTP method."""
+
+    def test_view_only_can_read_not_write(self):
+        viewer = make_role('Branch viewer', ['branches.view'])
+        self.client.force_authenticate(self.make_user(roles=[(viewer, None)]))
+        self.assertEqual(self.client.get('/api/branches/').status_code, 200)
+        self.assertEqual(self.client.post('/api/branches/', {'name': 'X', 'code': 'X'}, format='json').status_code, 403)
+        self.assertEqual(self.client.delete(f'/api/branches/{self.dxb.id}/').status_code, 403)
+
+    def test_users_page_can_read_branch_and_role_lists(self):
+        hr = make_role('HR', ['users.view', 'users.create'])
+        self.client.force_authenticate(self.make_user(roles=[(hr, None)]))
+        self.assertEqual(self.client.get('/api/branches/').status_code, 200)
+        self.assertEqual(self.client.get('/api/roles/').status_code, 200)
+        self.assertEqual(self.client.post('/api/roles/', {'name': 'X', 'permissions': []}, format='json').status_code, 403)
+
+
+class MenuApiTests(Base):
+    def test_create_menu_creates_permissions_and_owner_gets_them(self):
+        self.as_owner()
+        res = self.client.post('/api/menus/', {
+            'code': 'customers', 'name': 'Customers', 'path': '/customers', 'icon': 'users',
+            'actions': ['view', 'create', 'export'],
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['actions'], ['view', 'create', 'export'])
+        self.assertEqual(set(Permission.objects.filter(menu__code='customers').values_list('code', flat=True)),
+                         {'customers.view', 'customers.create', 'customers.export'})
+        self.assertIn('customers.export', get_access(self.owner).org_permissions)
+
+    def test_removing_action_removes_permission_from_roles(self):
+        role = make_role('Ops', ['orders.view', 'orders.delete'])
+        self.as_owner()
+        orders = Menu.objects.get(code='orders')
+        res = self.client.patch(f'/api/menus/{orders.id}/', {'actions': ['view', 'create', 'edit']}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertFalse(Permission.objects.filter(code='orders.delete').exists())
+        self.assertEqual(list(role.permissions.values_list('code', flat=True)), ['orders.view'])
+
+    def test_rules(self):
+        self.as_owner()
+        branches = Menu.objects.get(code='branches')
+        admin_group = Menu.objects.get(code='administration')
+        url = f'/api/menus/{branches.id}/'
+        # system menu: can rename, not delete, not change path or drop actions; code is fixed
+        self.assertEqual(self.client.patch(url, {'name': 'Shops'}, format='json').status_code, 200)
+        self.assertEqual(self.client.delete(url).status_code, 400)
+        self.assertEqual(self.client.patch(url, {'path': '/shops'}, format='json').status_code, 400)
+        self.assertEqual(self.client.patch(url, {'actions': ['view']}, format='json').status_code, 400)
+        self.assertEqual(self.client.patch(url, {'code': 'shops'}, format='json').status_code, 400)
+        # no loops; a heading with menus under it can't be deleted; bad input rejected
+        self.assertEqual(self.client.patch(f'/api/menus/{admin_group.id}/', {'parent': str(branches.id)},
+                                           format='json').status_code, 400)
+        group = make_menu('extras', [], path='')
+        make_menu('notes', ['view'], parent=group)
+        self.assertEqual(self.client.delete(f'/api/menus/{group.id}/').status_code, 400)
+        bad = {'code': 'Bad Code', 'name': 'x', 'path': 'nope', 'actions': ['View All']}
+        errors = self.client.post('/api/menus/', bad, format='json').data
+        self.assertTrue({'code', 'path', 'actions'} <= set(errors))
+
+    def test_my_menus_follow_token_permissions(self):
+        self.make_user(roles=[(self.cashier, self.dxb)])
+        self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
+        codes = [m['code'] for m in self.client.get('/api/menus/my/').data]
+        self.assertEqual(codes, ['orders'])  # cashier: orders.view only, no admin heading
+
+        self.client.post('/api/auth/login/', {'email': 'owner@shop.com', 'password': PASSWORD}, format='json')
+        codes = [m['code'] for m in self.client.get('/api/menus/my/').data]
+        self.assertIn('administration', codes)  # heading shown because menus under it are
+        self.assertLess(codes.index('administration'), codes.index('menus'))
+
+    def test_inactive_menu_hidden(self):
+        Menu.objects.filter(code='orders').update(is_active=False)
+        self.make_user(roles=[(self.cashier, self.dxb)])
+        self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
+        self.assertEqual(self.client.get('/api/menus/my/').data, [])

@@ -100,7 +100,7 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
-# ── User management (users.manage) ──────────────────────────────────────────
+# ── User management (Users menu: users.view/create/edit/delete) ─────────────
 
 def is_owner_user(user):
     return UserRole.objects.filter(user=user, branch__isnull=True, role__name=OWNER_ROLE,

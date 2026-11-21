@@ -1,12 +1,6 @@
 from django.db import migrations
 
 
-def load_permissions(apps, schema_editor):
-    from roles.seed import sync_permissions
-
-    sync_permissions(apps.get_model('roles', 'Permission'))
-
-
 class Migration(migrations.Migration):
     dependencies = [
         ('roles', '0001_initial'),
@@ -27,6 +21,5 @@ class Migration(migrations.Migration):
             """,
             reverse_sql='ALTER TABLE user_roles DROP CONSTRAINT user_roles_branch_assignment_fk;',
         ),
-        # The permission codes the application checks (roles/registry.py). Not sample data.
-        migrations.RunPython(load_permissions, migrations.RunPython.noop),
+        # Permissions are loaded per menu in 0003_menus.
     ]

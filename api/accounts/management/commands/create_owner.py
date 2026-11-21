@@ -1,6 +1,5 @@
 import getpass
 
-from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
@@ -42,10 +41,9 @@ class Command(BaseCommand):
             if password != getpass.getpass('Password (again): '):
                 raise CommandError('Passwords do not match.')
 
-        try:
-            validate_password(password, User(email=email, full_name=name))
-        except ValidationError as e:
-            raise CommandError(' '.join(e.messages))
+        # No strength rules here (any password is accepted); it just can't be empty.
+        if not password:
+            raise CommandError('Password is required.')
 
         with transaction.atomic():
             owner_role = ensure_owner_role(Role, RolePermission, Permission)

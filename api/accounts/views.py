@@ -9,7 +9,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .access import get_access, org_permission
+from .access import get_access, menu_permission
 from .cookies import clear_auth_cookies, set_auth_cookies
 from .models import User
 from .serializers import (
@@ -166,9 +166,9 @@ class ChangePasswordView(APIView):
 
 
 class StaffUserViewSet(viewsets.ModelViewSet):
-    """Users with `users.manage` manage accounts. Only owners may change an owner's account."""
+    """Users menu: view/create/edit/delete accounts. Only owners may change an owner's account."""
     serializer_class = StaffUserSerializer
-    permission_classes = [org_permission('users.manage')]
+    permission_classes = [menu_permission('users')]
 
     def get_queryset(self):
         return User.objects.prefetch_related('user_roles__role', 'user_roles__branch')
