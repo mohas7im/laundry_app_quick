@@ -20,46 +20,58 @@ export function DashboardPage() {
         title={`Welcome, ${user.full_name.split(" ")[0]}`}
         description={
           activeBranch
-            ? `You're working in ${activeBranch.name}${activeBranch.role ? ` as ${activeBranch.role.name}` : ""}.`
+            ? `You're working in ${activeBranch.name} as ${activeBranch.roles.map((r) => r.name).join(", ") || "staff"}.`
             : "Create your first branch to get started."
         }
       />
-      {user.is_owner ? <OwnerOverview /> : <StaffOverview />}
+      <ManagementOverview />
+      <StaffOverview />
     </>
   )
 }
 
-function OwnerOverview() {
-  const branches = useBranches()
-  const roles = useRoles()
-  const users = useStaffUsers()
+/** Counts for the admin areas the user can manage (owner, admin…). */
+function ManagementOverview() {
+  const { can } = useAuth()
+  const cards = [
+    can("branches.manage") && <BranchesStat key="branches" />,
+    can("roles.manage") && <RolesStat key="roles" />,
+    can("users.manage") && <UsersStat key="users" />,
+  ].filter(Boolean)
+  if (!cards.length) return null
+  return <div className="grid gap-4 sm:grid-cols-3">{cards}</div>
+}
 
+function BranchesStat() {
+  const { data, isLoading } = useBranches()
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      <StatCard
-        title="Branches"
-        icon={Building2Icon}
-        to="/branches"
-        loading={branches.isLoading}
-        value={branches.data?.filter((b) => b.is_active).length}
-        detail={branches.data && `${branches.data.length} total`}
-      />
-      <StatCard
-        title="Roles"
-        icon={ShieldCheckIcon}
-        to="/roles"
-        loading={roles.isLoading}
-        value={roles.data?.length}
-      />
-      <StatCard
-        title="Staff"
-        icon={UsersIcon}
-        to="/users"
-        loading={users.isLoading}
-        value={users.data?.filter((u) => u.is_active).length}
-        detail={users.data && `${users.data.length} total`}
-      />
-    </div>
+    <StatCard
+      title="Branches"
+      icon={Building2Icon}
+      to="/branches"
+      loading={isLoading}
+      value={data?.filter((b) => b.is_active).length}
+      detail={data && `${data.length} total`}
+    />
+  )
+}
+
+function RolesStat() {
+  const { data, isLoading } = useRoles()
+  return <StatCard title="Roles" icon={ShieldCheckIcon} to="/roles" loading={isLoading} value={data?.length} />
+}
+
+function UsersStat() {
+  const { data, isLoading } = useStaffUsers()
+  return (
+    <StatCard
+      title="Staff"
+      icon={UsersIcon}
+      to="/users"
+      loading={isLoading}
+      value={data?.filter((u) => u.is_active).length}
+      detail={data && `${data.length} total`}
+    />
   )
 }
 
@@ -108,7 +120,7 @@ function StaffOverview() {
       <CardHeader>
         <CardTitle>Your access in {activeBranch.name}</CardTitle>
         <CardDescription>
-          Role: {activeBranch.role?.name}. Ask the owner if you need more access.
+          Roles: {activeBranch.roles.map((r) => r.name).join(", ")}. Ask the owner if you need more access.
         </CardDescription>
         <div className="mt-2 flex flex-wrap gap-1">
           {activeBranch.permissions.length ? (

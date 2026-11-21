@@ -1,6 +1,6 @@
 import { createBrowserRouter } from "react-router"
 
-import { RequireAuth, RequireGuest, RequireOwner } from "@/components/auth/route-guards"
+import { RequireAuth, RequireGuest, RequirePermission } from "@/components/auth/route-guards"
 import { AppLayout } from "@/components/layout/app-layout"
 import { LoginPage } from "@/features/auth/pages/login-page"
 import { BranchesPage } from "@/features/branches/pages/branches-page"
@@ -24,12 +24,16 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           {
-            element: <RequireOwner />,
-            children: [
-              { path: "branches", element: <BranchesPage /> },
-              { path: "roles", element: <RolesPage /> },
-              { path: "users", element: <UsersPage /> },
-            ],
+            element: <RequirePermission permission="branches.manage" />,
+            children: [{ path: "branches", element: <BranchesPage /> }],
+          },
+          {
+            element: <RequirePermission permission="roles.manage" />,
+            children: [{ path: "roles", element: <RolesPage /> }],
+          },
+          {
+            element: <RequirePermission permission="users.manage" />,
+            children: [{ path: "users", element: <UsersPage /> }],
           },
         ],
       },

@@ -13,10 +13,9 @@ import { useAuth } from "@/lib/auth/auth-context"
 
 export function NavMain({ groups }: { groups: NavGroup[] }) {
   const { pathname } = useLocation()
-  const { user, can } = useAuth()
+  const { can } = useAuth()
 
-  const isVisible = (item: NavItem) =>
-    (!item.ownerOnly || !!user?.is_owner) && (!item.permission || can(item.permission))
+  const isVisible = (item: NavItem) => !item.permission || can(item.permission)
 
   return (
     <>

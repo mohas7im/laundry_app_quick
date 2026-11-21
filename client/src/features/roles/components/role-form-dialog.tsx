@@ -46,7 +46,10 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const selected = new Set(values.permissions)
+  // Built-in Owner role: always every permission, read-only here.
+  const isOwnerRole = !!role?.is_system_role && role.name === "Owner"
+  const allCodes = groups.data?.flatMap((g) => g.permissions.map((p) => p.code)) ?? []
+  const selected = new Set(isOwnerRole ? allCodes : values.permissions)
 
   function toggle(codes: string[], on: boolean) {
     const next = new Set(values.permissions)
@@ -61,7 +64,13 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
     e.preventDefault()
     setErrors({})
     try {
-      await save.mutateAsync({ id: role?.id, data: values })
+      // Built-in roles keep their name; the Owner role keeps every permission.
+      const data = isOwnerRole
+        ? { description: values.description }
+        : role?.is_system_role
+          ? { description: values.description, permissions: values.permissions }
+          : values
+      await save.mutateAsync({ id: role?.id, data })
       await reload()
       toast.success(role ? "Role updated" : "Role created")
       onDone()
@@ -77,7 +86,7 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
       <DialogHeader>
         <DialogTitle>{role ? `Edit ${role.name}` : "New role"}</DialogTitle>
         <DialogDescription>
-          Choose what people with this role can do. You pick a role for each branch when adding a user.
+          Choose what people with this role can do. You choose the branches when you give the role to a user.
         </DialogDescription>
       </DialogHeader>
 
@@ -89,6 +98,7 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
               value={values.name}
               onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
               placeholder="e.g. Cashier"
+              disabled={!!role?.is_system_role}
               autoFocus
             />
           )}
@@ -110,6 +120,9 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
           <span className="text-xs text-muted-foreground">{selected.size} selected</span>
         </div>
         {errors.permissions && <p className="text-xs text-destructive">{errors.permissions}</p>}
+        {isOwnerRole && (
+          <p className="text-sm text-muted-foreground">The Owner role always has every permission.</p>
+        )}
 
         {groups.isLoading ? (
           <Skeleton className="h-40 w-full" />
@@ -118,7 +131,13 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {groups.data!.map((group) => (
-              <PermissionGroupCard key={group.module} group={group} selected={selected} onToggle={toggle} />
+              <PermissionGroupCard
+                key={group.module}
+                group={group}
+                selected={selected}
+                onToggle={toggle}
+                disabled={isOwnerRole}
+              />
             ))}
           </div>
         )}
@@ -140,10 +159,12 @@ function PermissionGroupCard({
   group,
   selected,
   onToggle,
+  disabled,
 }: {
   group: PermissionGroup
   selected: Set<string>
   onToggle: (codes: string[], on: boolean) => void
+  disabled?: boolean
 }) {
   const codes = group.permissions.map((p) => p.code)
   const count = codes.filter((c) => selected.has(c)).length
@@ -158,6 +179,7 @@ function PermissionGroupCard({
           id={groupId}
           checked={all}
           indeterminate={count > 0 && !all}
+          disabled={disabled}
           onCheckedChange={(on) => onToggle(codes, !!on)}
         />
         <Label htmlFor={groupId} className="font-medium">
@@ -169,7 +191,12 @@ function PermissionGroupCard({
           const id = `perm-${p.code}`
           return (
             <div key={p.code} className="flex items-center gap-2">
-              <Checkbox id={id} checked={selected.has(p.code)} onCheckedChange={(on) => onToggle([p.code], !!on)} />
+              <Checkbox
+                id={id}
+                checked={selected.has(p.code)}
+                disabled={disabled}
+                onCheckedChange={(on) => onToggle([p.code], !!on)}
+              />
               <Label htmlFor={id} className="font-normal">
                 {p.label}
               </Label>

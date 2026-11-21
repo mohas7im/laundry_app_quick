@@ -3,7 +3,6 @@ import { Link } from "react-router"
 import { PlusIcon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import { FormField } from "@/components/form-field"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,13 +13,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Switch } from "@/components/ui/switch"
 import { useBranches } from "@/features/branches/api"
 import { useRoles } from "@/features/roles/api"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
+import { useAuth } from "@/lib/auth/auth-context"
 import { useSaveStaffUser, type StaffUser } from "../api"
 
 type Props = {
@@ -39,42 +39,52 @@ export function UserFormDialog({ open, onOpenChange, user }: Props) {
   )
 }
 
-// A row in the "Branches & roles" list. 0 = not chosen yet.
-type Assignment = { key: number; branch: number; role: number }
+const ALL_BRANCHES = "all"
+
+// One row of the Roles list: a role and where it applies ("" = not chosen yet).
+type RoleRow = { key: number; role: string; scope: string }
 
 let nextKey = 1
+const emptyRow = (): RoleRow => ({ key: nextKey++, role: "", scope: "" })
 
 function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => void }) {
   const save = useSaveStaffUser()
   const branches = useBranches()
   const roles = useRoles()
+  const { user: me } = useAuth()
 
   const [email, setEmail] = useState(user?.email ?? "")
   const [fullName, setFullName] = useState(user?.full_name ?? "")
   const [phone, setPhone] = useState(user?.phone ?? "")
   const [password, setPassword] = useState("")
   const [isActive, setIsActive] = useState(user?.is_active ?? true)
-  const [assignments, setAssignments] = useState<Assignment[]>(() =>
-    user?.memberships.length
-      ? user.memberships.map((m) => ({ key: nextKey++, branch: m.branch, role: m.role }))
-      : [{ key: nextKey++, branch: 0, role: 0 }],
+  const [rows, setRows] = useState<RoleRow[]>(() =>
+    user?.roles.length
+      ? user.roles.map((r) => ({ key: nextKey++, role: r.role, scope: r.branch ?? ALL_BRANCHES }))
+      : [emptyRow()],
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const update = (key: number, patch: Partial<Assignment>) =>
-    setAssignments((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-
-  const usedBranches = new Set(assignments.map((a) => a.branch))
   const branchList = branches.data ?? []
-  const roleList = roles.data ?? []
-  const canAddRow = assignments.length < branchList.length
-  const missingSetup = !branches.isLoading && !roles.isLoading && (!branchList.length || !roleList.length)
+  // Only an owner may give the Owner role.
+  const roleList = (roles.data ?? []).filter((r) => me?.is_owner || !(r.is_system_role && r.name === "Owner"))
+  const ownerRoleId = roles.data?.find((r) => r.is_system_role && r.name === "Owner")?.id
+  const noRoles = !roles.isLoading && !roleList.length
+
+  const update = (key: number, patch: Partial<RoleRow>) =>
+    setRows((list) =>
+      list.map((r) => {
+        if (r.key !== key) return r
+        const next = { ...r, ...patch }
+        // The Owner role always applies to all branches.
+        return next.role === ownerRoleId ? { ...next, scope: ALL_BRANCHES } : next
+      }),
+    )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const memberships = assignments.filter((a) => a.branch && a.role).map(({ branch, role }) => ({ branch, role }))
-    if (assignments.some((a) => !a.branch || !a.role)) {
-      setErrors({ memberships: "Choose a branch and a role on every row, or remove the empty row." })
+    if (rows.some((r) => !r.role || !r.scope)) {
+      setErrors({ roles: "Choose a role and where it applies on every row, or remove the empty row." })
       return
     }
     setErrors({})
@@ -86,7 +96,7 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
           full_name: fullName,
           phone,
           is_active: isActive,
-          memberships,
+          roles: rows.map((r) => ({ role: r.role, branch: r.scope === ALL_BRANCHES ? null : r.scope })),
           ...(password ? { password } : {}),
         },
       })
@@ -100,132 +110,132 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4" noValidate>
-      <DialogHeader>
-        <DialogTitle>{user ? `Edit ${user.full_name}` : "New user"}</DialogTitle>
-        <DialogDescription>Staff log in with this email and password.</DialogDescription>
-      </DialogHeader>
+    <form onSubmit={handleSubmit} noValidate>
+      <FieldGroup>
+        <DialogHeader>
+          <DialogTitle>{user ? `Edit ${user.full_name}` : "New user"}</DialogTitle>
+          <DialogDescription>Staff log in with this email and password.</DialogDescription>
+        </DialogHeader>
 
-      {missingSetup && (
-        <Alert>
-          <AlertDescription>
-            Create at least one <Link to="/branches" className="underline" onClick={onDone}>branch</Link> and one{" "}
-            <Link to="/roles" className="underline" onClick={onDone}>role</Link> before adding users.
-          </AlertDescription>
-        </Alert>
-      )}
+        {noRoles && (
+          <Alert>
+            <AlertDescription>
+              Create a role on the{" "}
+              <Link to="/roles" className="underline" onClick={onDone}>
+                Roles &amp; Permissions
+              </Link>{" "}
+              page before adding users.
+            </AlertDescription>
+          </Alert>
+        )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Full name" required error={errors.full_name}>
-          {(f) => <Input {...f} value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus />}
-        </FormField>
-        <FormField label="Phone" error={errors.phone}>
-          {(f) => <Input {...f} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />}
-        </FormField>
-        <FormField label="Email" required error={errors.email}>
-          {(f) => (
-            <Input {...f} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
-          )}
-        </FormField>
-        <FormField
-          label={user ? "New password" : "Password"}
-          required={!user}
-          error={errors.password}
-          hint={user ? "Leave empty to keep the current password." : "At least 8 characters."}
-        >
-          {(f) => (
-            <Input
-              {...f}
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          )}
-        </FormField>
-      </div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field data-invalid={!!errors.full_name || undefined}>
+            <FieldLabel htmlFor="user-name">Full name</FieldLabel>
+            <Input id="user-name" value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus
+              aria-invalid={!!errors.full_name || undefined} />
+            {errors.full_name && <FieldError>{errors.full_name}</FieldError>}
+          </Field>
+          <Field data-invalid={!!errors.phone || undefined}>
+            <FieldLabel htmlFor="user-phone">Phone</FieldLabel>
+            <Input id="user-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+              aria-invalid={!!errors.phone || undefined} />
+            {errors.phone && <FieldError>{errors.phone}</FieldError>}
+          </Field>
+          <Field data-invalid={!!errors.email || undefined}>
+            <FieldLabel htmlFor="user-email">Email</FieldLabel>
+            <Input id="user-email" type="email" autoComplete="off" value={email}
+              onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email || undefined} />
+            {errors.email && <FieldError>{errors.email}</FieldError>}
+          </Field>
+          <Field data-invalid={!!errors.password || undefined}>
+            <FieldLabel htmlFor="user-password">{user ? "New password" : "Password"}</FieldLabel>
+            <Input id="user-password" type="password" autoComplete="new-password" value={password}
+              onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password || undefined} />
+            {errors.password ? (
+              <FieldError>{errors.password}</FieldError>
+            ) : (
+              <FieldDescription>
+                {user ? "Leave empty to keep the current password." : "At least 8 characters."}
+              </FieldDescription>
+            )}
+          </Field>
+        </div>
 
-      <div className="grid gap-2">
-        <Label>Branches & roles</Label>
-        <p className="text-xs text-muted-foreground">
-          The user can work in each branch listed here, with that branch's role.
-        </p>
+        <FieldSet>
+          <FieldLegend variant="label">Roles</FieldLegend>
+          <FieldDescription>
+            A role for <strong>All branches</strong> applies everywhere. A role for one branch applies only there.
+          </FieldDescription>
 
-        {assignments.map((a, i) => (
-          <div key={a.key} className="flex items-center gap-2">
-            <NativeSelect
-              className="flex-1"
-              aria-label={`Branch ${i + 1}`}
-              value={a.branch}
-              onChange={(e) => update(a.key, { branch: Number(e.target.value) })}
-            >
-              <NativeSelectOption value={0}>Select branch…</NativeSelectOption>
-              {branchList.map((b) => (
-                <NativeSelectOption
-                  key={b.id}
-                  value={b.id}
-                  disabled={b.id !== a.branch && usedBranches.has(b.id)}
-                >
-                  {b.name}
-                  {!b.is_active ? " (inactive)" : ""}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <NativeSelect
-              className="flex-1"
-              aria-label={`Role ${i + 1}`}
-              value={a.role}
-              onChange={(e) => update(a.key, { role: Number(e.target.value) })}
-            >
-              <NativeSelectOption value={0}>Select role…</NativeSelectOption>
-              {roleList.map((r) => (
-                <NativeSelectOption key={r.id} value={r.id}>
-                  {r.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`Remove row ${i + 1}`}
-              disabled={assignments.length === 1}
-              onClick={() => setAssignments((rows) => rows.filter((r) => r.key !== a.key))}
-            >
-              <XIcon />
-            </Button>
-          </div>
-        ))}
+          {rows.map((row, i) => (
+            <div key={row.key} className="flex items-center gap-2">
+              <NativeSelect
+                className="flex-1"
+                aria-label={`Role ${i + 1}`}
+                value={row.role}
+                onChange={(e) => update(row.key, { role: e.target.value })}
+              >
+                <NativeSelectOption value="">Select role…</NativeSelectOption>
+                {roleList.map((r) => (
+                  <NativeSelectOption key={r.id} value={r.id}>
+                    {r.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <NativeSelect
+                className="flex-1"
+                aria-label={`Where role ${i + 1} applies`}
+                value={row.scope}
+                disabled={row.role === ownerRoleId}
+                onChange={(e) => update(row.key, { scope: e.target.value })}
+              >
+                <NativeSelectOption value="">Select where…</NativeSelectOption>
+                <NativeSelectOption value={ALL_BRANCHES}>All branches</NativeSelectOption>
+                {branchList.map((b) => (
+                  <NativeSelectOption key={b.id} value={b.id}>
+                    {b.name}
+                    {!b.is_active ? " (inactive)" : ""}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`Remove row ${i + 1}`}
+                disabled={rows.length === 1}
+                onClick={() => setRows((list) => list.filter((r) => r.key !== row.key))}
+              >
+                <XIcon />
+              </Button>
+            </div>
+          ))}
 
-        {errors.memberships && <p className="text-xs text-destructive">{errors.memberships}</p>}
+          {errors.roles && <FieldError>{errors.roles}</FieldError>}
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-fit"
-          disabled={!canAddRow}
-          onClick={() => setAssignments((rows) => [...rows, { key: nextKey++, branch: 0, role: 0 }])}
-        >
-          <PlusIcon />
-          Add another branch
-        </Button>
-      </div>
+          <Button type="button" variant="outline" size="sm" className="w-fit"
+            onClick={() => setRows((list) => [...list, emptyRow()])}>
+            <PlusIcon data-icon="inline-start" />
+            Add role
+          </Button>
+        </FieldSet>
 
-      <div className="flex items-center gap-3">
-        <Switch id="user-active" checked={isActive} onCheckedChange={setIsActive} />
-        <Label htmlFor="user-active">Active</Label>
-        <span className="text-xs text-muted-foreground">Inactive users can't log in.</span>
-      </div>
+        <Field orientation="horizontal">
+          <Switch id="user-active" checked={isActive} onCheckedChange={setIsActive} />
+          <FieldLabel htmlFor="user-active">Active</FieldLabel>
+          <FieldDescription>Inactive users can't log in.</FieldDescription>
+        </Field>
 
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={save.isPending || missingSetup}>
-          {save.isPending ? "Saving…" : user ? "Save changes" : "Create user"}
-        </Button>
-      </DialogFooter>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={save.isPending || noRoles}>
+            {save.isPending ? "Saving…" : user ? "Save changes" : "Create user"}
+          </Button>
+        </DialogFooter>
+      </FieldGroup>
     </form>
   )
 }

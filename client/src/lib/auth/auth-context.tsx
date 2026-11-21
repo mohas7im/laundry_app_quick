@@ -12,10 +12,11 @@ type AuthContextValue = {
   /** The branch in the user's access token (null if they have none). */
   activeBranch: UserBranch | null
   /** Ask the server for a token scoped to another branch. */
-  selectBranch: (branchId: number) => Promise<void>
+  selectBranch: (branchId: string) => Promise<void>
   /**
-   * UI hint: true if the active branch's permissions include this one (owners: always).
-   * Mirrors the token's `permissions` claim; the backend enforces it from the token.
+   * UI hint: true if the user has this permission in the active branch (which includes
+   * organization-wide roles), or organization-wide when they have no branch yet.
+   * Mirrors the token's `permissions` claim; the backend enforces it.
    */
   can: (permission: string) => boolean
   login: (credentials: LoginCredentials) => Promise<AuthUser>
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applyUser])
 
   const selectBranch = useCallback(
-    async (branchId: number) => {
+    async (branchId: string) => {
       if (branchId === user?.active_branch_id) return
       applyUser(await authService.switchBranch(branchId))
       queryClient.invalidateQueries() // branch-scoped data must refetch
@@ -79,7 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const can = useCallback(
-    (permission: string) => !!user && (user.is_owner || !!activeBranch?.permissions.includes(permission)),
+    (permission: string) =>
+      !!user && (activeBranch ? activeBranch.permissions : user.permissions).includes(permission),
     [user, activeBranch],
   )
 

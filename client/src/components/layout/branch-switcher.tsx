@@ -34,7 +34,7 @@ export function BranchSwitcher() {
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-medium">{activeBranch.name}</span>
         <span className="truncate text-xs text-muted-foreground">
-          {activeBranch.role?.name ?? "Owner"} · {activeBranch.code}
+          {activeBranch.roles.map((r) => r.name).join(", ") || "No role"} · {activeBranch.code}
         </span>
       </div>
     </>
@@ -82,7 +82,7 @@ export function BranchSwitcher() {
                 >
                   <div className="grid flex-1 leading-tight">
                     <span>{branch.name}</span>
-                    <span className="text-xs text-muted-foreground">{branch.role?.name ?? "Owner"}</span>
+                    <span className="text-xs text-muted-foreground">{branch.roles.map((r) => r.name).join(", ")}</span>
                   </div>
                   {branch.id === activeBranch.id && <CheckIcon className="size-4" />}
                 </DropdownMenuItem>

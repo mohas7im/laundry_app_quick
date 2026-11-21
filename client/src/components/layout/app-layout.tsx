@@ -27,8 +27,9 @@ function NoBranchAssigned() {
 export function AppLayout() {
   const { user, activeBranch } = useAuth()
 
-  // Staff need a branch to work in; the owner can still reach admin pages to create one.
-  if (user && !user.is_owner && !activeBranch) return <NoBranchAssigned />
+  // Staff need a branch to work in; users with organization-wide roles (e.g. the owner
+  // before any branch exists) can still reach the admin pages.
+  if (user && !activeBranch && user.permissions.length === 0) return <NoBranchAssigned />
 
   return (
     <SidebarProvider

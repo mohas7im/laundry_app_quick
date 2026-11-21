@@ -7,24 +7,28 @@ export interface LoginCredentials {
   password: string
 }
 
-/** A branch the user can work in, with their role and permission codes there. */
+/** A branch the user can work in, with the roles and permissions that apply there. */
 export interface UserBranch {
-  id: number
+  id: string
   name: string
   code: string
-  role: { id: number; name: string } | null // null for the owner
+  /** Organization-wide roles plus roles given for this branch. */
+  roles: { id: string; name: string }[]
   permissions: string[]
 }
 
 // Mirrors accounts.serializers.MeSerializer
 export interface AuthUser {
-  id: number
+  id: string
   email: string
   full_name: string
   phone: string
   is_owner: boolean
-  /** The branch in the current access token (its role/permissions are the token's claims). */
-  active_branch_id: number | null
+  /** Organization-wide roles and their permissions (apply in every branch). */
+  roles: string[]
+  permissions: string[]
+  /** The branch in the current access token. */
+  active_branch_id: string | null
   /** Every branch the user may switch to. */
   branches: UserBranch[]
   date_joined: string
@@ -53,7 +57,7 @@ export const authService = {
   },
 
   /** Re-issues the tokens scoped to another branch (new role/permission claims). */
-  async switchBranch(branchId: number): Promise<AuthUser> {
+  async switchBranch(branchId: string): Promise<AuthUser> {
     const { data } = await apiClient.post<{ user: AuthUser }>(ENDPOINTS.auth.switchBranch, {
       branch_id: branchId,
     })

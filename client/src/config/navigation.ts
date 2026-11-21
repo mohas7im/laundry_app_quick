@@ -5,9 +5,7 @@ export type NavItem = {
   title: string
   url: string
   icon: LucideIcon
-  /** Only the owner account sees this item. */
-  ownerOnly?: boolean
-  /** Staff need this permission in the active branch to see it. */
+  /** Shown only to users with this permission. */
   permission?: string
 }
 
@@ -16,7 +14,7 @@ export type NavGroup = {
   items: NavItem[]
 }
 
-export const APP_NAME = "Laundry Quick"
+export const APP_NAME = "Comfort"
 
 export const mainNav: NavGroup[] = [
   {
@@ -25,9 +23,9 @@ export const mainNav: NavGroup[] = [
   {
     label: "Administration",
     items: [
-      { title: "Branches", url: "/branches", icon: Building2Icon, ownerOnly: true },
-      { title: "Roles & Permissions", url: "/roles", icon: ShieldCheckIcon, ownerOnly: true },
-      { title: "Users", url: "/users", icon: UsersIcon, ownerOnly: true },
+      { title: "Branches", url: "/branches", icon: Building2Icon, permission: "branches.manage" },
+      { title: "Roles & Permissions", url: "/roles", icon: ShieldCheckIcon, permission: "roles.manage" },
+      { title: "Users", url: "/users", icon: UsersIcon, permission: "users.manage" },
     ],
   },
 ]

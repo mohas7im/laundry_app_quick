@@ -5,7 +5,7 @@ import { ENDPOINTS } from "@/lib/api/endpoints"
 
 // Mirrors branches.serializers.BranchSerializer
 export interface Branch {
-  id: number
+  id: string
   name: string
   code: string
   phone: string
@@ -34,7 +34,7 @@ export function useBranches() {
 export function useSaveBranch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, data }: { id?: number; data: Partial<BranchInput> }) =>
+    mutationFn: async ({ id, data }: { id?: string; data: Partial<BranchInput> }) =>
       id
         ? (await apiClient.patch<Branch>(ENDPOINTS.branches.byId(id), data)).data
         : (await apiClient.post<Branch>(ENDPOINTS.branches.list, data)).data,
@@ -45,7 +45,7 @@ export function useSaveBranch() {
 export function useDeleteBranch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiClient.delete(ENDPOINTS.branches.byId(id)),
+    mutationFn: (id: string) => apiClient.delete(ENDPOINTS.branches.byId(id)),
     onSuccess: () => qc.invalidateQueries({ queryKey: branchKeys.all }),
   })
 }

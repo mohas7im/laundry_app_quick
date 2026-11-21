@@ -3,22 +3,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api/client"
 import { ENDPOINTS } from "@/lib/api/endpoints"
 
-// Mirrors accounts.serializers.MembershipSerializer / StaffUserSerializer
-export interface Membership {
-  id: number
-  branch: number
-  branch_name: string
-  role: number
+// Mirrors accounts.serializers.UserRoleSerializer: one row of user_roles.
+export interface UserRoleRow {
+  id: string
+  role: string
   role_name: string
+  /** null = organization-wide (all branches) */
+  branch: string | null
+  branch_name: string | null
 }
 
+// Mirrors accounts.serializers.StaffUserSerializer
 export interface StaffUser {
-  id: number
+  id: string
   email: string
   full_name: string
   phone: string
   is_active: boolean
-  memberships: Membership[]
+  is_owner: boolean
+  roles: UserRoleRow[]
   date_joined: string
   last_login: string | null
 }
@@ -30,7 +33,8 @@ export interface StaffUserInput {
   is_active: boolean
   /** Required when creating; leave empty when editing to keep the current one. */
   password?: string
-  memberships: { branch: number; role: number }[]
+  /** branch null = organization-wide. Branch assignments are derived from these. */
+  roles: { role: string; branch: string | null }[]
 }
 
 export const userKeys = {
@@ -48,7 +52,7 @@ export function useStaffUsers() {
 export function useSaveStaffUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, data }: { id?: number; data: StaffUserInput }) =>
+    mutationFn: async ({ id, data }: { id?: string; data: StaffUserInput }) =>
       id
         ? (await apiClient.patch<StaffUser>(ENDPOINTS.users.byId(id), data)).data
         : (await apiClient.post<StaffUser>(ENDPOINTS.users.list, data)).data,
@@ -60,7 +64,7 @@ export function useSaveStaffUser() {
 export function useDeleteStaffUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiClient.delete(ENDPOINTS.users.byId(id)),
+    mutationFn: (id: string) => apiClient.delete(ENDPOINTS.users.byId(id)),
     onSuccess: () => qc.invalidateQueries(),
   })
 }

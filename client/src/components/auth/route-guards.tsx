@@ -34,9 +34,9 @@ export function RequireGuest() {
   return <Outlet />
 }
 
-/** Owner account only. */
-export function RequireOwner() {
-  const { user } = useAuth()
-  if (!user?.is_owner) return <Navigate to="/" replace />
+/** Users with this permission only; others go to the dashboard. */
+export function RequirePermission({ permission }: { permission: string }) {
+  const { can } = useAuth()
+  if (!can(permission)) return <Navigate to="/" replace />
   return <Outlet />
 }

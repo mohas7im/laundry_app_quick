@@ -32,7 +32,10 @@ export function RolesPage() {
         header: "Role",
         cell: ({ row }) => (
           <div className="grid">
-            <span className="font-medium">{row.original.name}</span>
+            <span className="flex items-center gap-2 font-medium">
+              {row.original.name}
+              {row.original.is_system_role && <Badge variant="outline">Built-in</Badge>}
+            </span>
             {row.original.description && (
               <span className="text-xs text-muted-foreground">{row.original.description}</span>
             )}
@@ -62,7 +65,7 @@ export function RolesPage() {
               setEditing(row.original)
               setFormOpen(true)
             }}
-            onDelete={() => setDeleting(row.original)}
+            onDelete={row.original.is_system_role ? undefined : () => setDeleting(row.original)}
           />
         ),
       },
@@ -86,7 +89,7 @@ export function RolesPage() {
     <>
       <PageHeader
         title="Roles & Permissions"
-        description="Roles are shared by all branches. Each user gets a role per branch."
+        description="Create roles and choose their permissions. You decide where each role applies when adding a user."
         actions={
           <Button
             onClick={() => {

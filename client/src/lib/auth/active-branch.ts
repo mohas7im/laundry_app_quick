@@ -3,19 +3,19 @@
 
 const STORAGE_KEY = "laundry.lastBranchId"
 
-export function getLastBranchId(): number | null {
+export function getLastBranchId(): string | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? Number(raw) || null : null
+    return raw || null
   } catch {
     return null
   }
 }
 
-export function setLastBranchId(id: number | null): void {
+export function setLastBranchId(id: string | null): void {
   try {
     if (id === null) localStorage.removeItem(STORAGE_KEY)
-    else localStorage.setItem(STORAGE_KEY, String(id))
+    else localStorage.setItem(STORAGE_KEY, id)
   } catch {
     // storage unavailable (private mode) — not critical
   }

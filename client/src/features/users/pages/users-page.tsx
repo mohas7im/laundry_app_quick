@@ -39,14 +39,14 @@ export function UsersPage() {
       // accessorFn returns plain text so the search box can match branch and role names.
       {
         id: "branches",
-        header: "Branches & roles",
-        accessorFn: (u) => u.memberships.map((m) => `${m.branch_name} ${m.role_name}`).join(" "),
+        header: "Roles",
+        accessorFn: (u) => u.roles.map((r) => `${r.role_name} ${r.branch_name ?? "All branches"}`).join(" "),
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {row.original.memberships.map((m) => (
-              <Badge key={m.id} variant="secondary">
-                {m.branch_name} · {m.role_name}
+            {row.original.roles.map((r) => (
+              <Badge key={r.id} variant={r.branch ? "secondary" : "default"}>
+                {r.role_name} · {r.branch_name ?? "All branches"}
               </Badge>
             ))}
           </div>

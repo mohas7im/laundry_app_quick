@@ -16,7 +16,8 @@ export function RowActions({
 }: {
   label: string
   onEdit: () => void
-  onDelete: () => void
+  /** Omit to hide Delete (e.g. built-in roles). */
+  onDelete?: () => void
 }) {
   return (
     <div className="flex justify-end">
@@ -29,10 +30,12 @@ export function RowActions({
             <PencilIcon />
             Edit
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            <Trash2Icon />
-            Delete
-          </DropdownMenuItem>
+          {onDelete && (
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <Trash2Icon />
+              Delete
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
