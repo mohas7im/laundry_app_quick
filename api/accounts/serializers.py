@@ -103,13 +103,12 @@ class ChangePasswordSerializer(serializers.Serializer):
 # ── User management (Users menu: users.view/create/edit/delete) ─────────────
 
 def is_owner_user(user):
-    return UserRole.objects.filter(user=user, branch__isnull=True, role__name=OWNER_ROLE,
-                                   role__is_system_role=True).exists()
+    return UserRole.objects.filter(user=user, branch__isnull=True, role__name=OWNER_ROLE).exists()
 
 
 def other_active_owner_exists(user):
     return UserRole.objects.filter(
-        branch__isnull=True, role__name=OWNER_ROLE, role__is_system_role=True, user__is_active=True,
+        branch__isnull=True, role__name=OWNER_ROLE, user__is_active=True,
     ).exclude(user=user).exists()
 
 

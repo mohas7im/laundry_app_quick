@@ -43,7 +43,7 @@ class ErrorCode(StrEnum):
     PERMISSION_DENIED = 'PERMISSION_DENIED'        # logged in, but not allowed
     NOT_FOUND = 'NOT_FOUND'
     METHOD_NOT_ALLOWED = 'METHOD_NOT_ALLOWED'
-    OPERATION_NOT_ALLOWED = 'OPERATION_NOT_ALLOWED'  # a business rule forbids it (e.g. delete a built-in role)
+    OPERATION_NOT_ALLOWED = 'OPERATION_NOT_ALLOWED'  # a business rule forbids it (e.g. delete the Owner role)
     REFERENCED = 'REFERENCED'                      # can't delete: other records still use it
     TOO_MANY_REQUESTS = 'TOO_MANY_REQUESTS'
 

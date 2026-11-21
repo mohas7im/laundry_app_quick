@@ -8,6 +8,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from branches.models import Branch, UserBranchAssignment
 from roles.models import Action, Menu, Permission, Role, RolePermission, UserRole
+from roles.registry import SYSTEM_MENU_CODES
 from roles.seed import ensure_owner_role, sync_menu_permissions
 from .access import branch_permission, get_access
 from .models import User
@@ -86,7 +87,7 @@ class SchemaRuleTests(Base):
         self.assertEqual(list(user.user_roles.values_list('branch__code', flat=True)), ['DXB1'])
 
     def test_system_menus_loaded(self):
-        codes = set(Menu.objects.filter(is_system=True).values_list('code', flat=True))
+        codes = set(Menu.objects.filter(code__in=SYSTEM_MENU_CODES).values_list('code', flat=True))
         self.assertEqual(codes, {'dashboard', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
         self.assertEqual(list(Action.objects.values_list('code', flat=True)),
                          ['create', 'edit', 'delete', 'view', 'print'])
@@ -211,6 +212,10 @@ class RoleApiTests(Base):
         self.assertEqual(self.client.patch(url, {'name': 'Boss'}, format='json').status_code, 400)
         self.assertEqual(self.client.put(f'/api/permissions/roles/{self.owner_role.id}/', {'permissions': []},
                                          format='json').status_code, 400)
+        # no other role can take the Owner name (the owner is found by name)
+        self.assertEqual(self.client.post('/api/roles/', {'name': 'owner'}, format='json').status_code, 400)
+        res = self.client.patch(f'/api/roles/{self.cashier.id}/', {'name': 'Owner'}, format='json')
+        self.assertEqual(res.status_code, 400)
 
     def test_cannot_delete_role_in_use(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
@@ -428,7 +433,8 @@ class MenuApiTests(Base):
         self.assertIn('router_name', error_fields(post(router_name='')))          # and a router name
         self.assertIn('router_link', error_fields(post(router_link='orders')))    # must start with /
         self.assertIn('router_link', error_fields(post(router_link='/orders')))   # already used
-        self.assertIn('code', error_fields(post(code='Bad Code')))
+        self.assertIn('name', error_fields(post(name='Orders!', router_link='/x')))  # code "orders" is taken
+        self.assertIn('name', error_fields(post(name='123', router_link='/y')))      # no letters for a code
         both = self.client.post('/api/menus/', {'name': 'X', 'is_header': True, 'is_sub_header': True},
                                 format='json')
         self.assertIn('is_sub_header', error_fields(both))
@@ -443,7 +449,8 @@ class MenuApiTests(Base):
         self.assertEqual(self.client.delete(url).status_code, 400)
         self.assertEqual(self.client.patch(url, {'router_link': '/shops'}, format='json').status_code, 400)
         self.assertEqual(self.client.patch(url, {'is_header': True}, format='json').status_code, 400)
-        self.assertEqual(self.client.patch(url, {'code': 'shops'}, format='json').status_code, 400)
+        self.client.patch(url, {'code': 'shops'}, format='json')  # read-only: ignored
+        self.assertEqual(Menu.objects.get(pk=branches.pk).code, 'branches')
 
     def test_no_loops_and_protected_parents(self):
         self.as_owner()
@@ -469,12 +476,6 @@ class MenuApiTests(Base):
     def test_header_hidden_when_nothing_under_it_is_visible(self):
         only_header = make_role('Header only', ['administration.view'])
         self.make_user(roles=[(only_header, self.dxb)])
-        self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
-        self.assertEqual(body(self.client.get('/api/menus/my/')), [])
-
-    def test_inactive_menu_hidden(self):
-        Menu.objects.filter(code='orders').update(is_active=False)
-        self.make_user(roles=[(self.cashier, self.dxb)])
         self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
         self.assertEqual(body(self.client.get('/api/menus/my/')), [])
 

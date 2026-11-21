@@ -51,3 +51,6 @@ SYSTEM_MENUS = [
 
 def permission_description(action_name, menu_name):
     return f'{action_name} {menu_name}'
+
+# menus the app's own pages rely on: can't be deleted or restructured
+SYSTEM_MENU_CODES = frozenset(m['code'] for m in SYSTEM_MENUS)

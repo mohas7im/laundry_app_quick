@@ -6,6 +6,7 @@ from accounts.access import get_access, menu_permission, org_permission
 from common.drf import ResultViewSetMixin
 from common.results import BaseResult, ErrorCode
 from .models import Action, Menu, Role
+from .registry import SYSTEM_MENU_CODES
 from .serializers import MenuSerializer, RolePermissionsSerializer, RoleSerializer
 
 
@@ -35,8 +36,8 @@ class RoleViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     referenced_message = 'This role is assigned to users. Change their roles first.'
 
     def destroy(self, request, *args, **kwargs):
-        if self.get_object().is_system_role:
-            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "Built-in roles can't be deleted.").to_response()
+        if self.get_object().is_owner_role:
+            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "The Owner role can't be deleted.").to_response()
         return super().destroy(request, *args, **kwargs)
 
 
@@ -78,7 +79,7 @@ class PermissionMatrixView(APIView):
             'menus': [
                 {
                     'id': str(m.id), 'code': m.code, 'name': m.name, 'depth': m.depth,
-                    'is_header': m.is_header, 'is_sub_header': m.is_sub_header, 'is_active': m.is_active,
+                    'is_header': m.is_header, 'is_sub_header': m.is_sub_header,
                     'permissions': {p.action.code: p.code for p in m.permissions.all()},
                 }
                 for m in menus
@@ -101,8 +102,8 @@ class MenuViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     referenced_message = 'Move or delete the menus under it first.'
 
     def destroy(self, request, *args, **kwargs):
-        if self.get_object().is_system:
-            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "Built-in menus can't be deleted.").to_response()
+        if self.get_object().code in SYSTEM_MENU_CODES:
+            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "This menu is used by the app and can't be deleted.").to_response()
         return super().destroy(request, *args, **kwargs)
 
 
@@ -122,7 +123,7 @@ class MyMenuView(APIView):
         active = access.branch(branch_id) if branch_id else None
         have = active.permissions if active else access.org_permissions
 
-        menus = menu_tree(list(Menu.objects.filter(is_active=True)))
+        menus = menu_tree(list(Menu.objects.all()))
         by_id = {m.id: m for m in menus}
         visible = {m.id for m in menus if m.router_link and f'{m.code}.view' in have}
         for menu_id in list(visible):

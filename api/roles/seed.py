@@ -37,7 +37,6 @@ def sync_system_menus(Menu, Permission, Action):
             'is_sub_header': spec.get('is_sub_header', False),
             'router_name': spec.get('router_name', ''),
             'router_link': spec.get('router_link', ''),
-            'is_system': True,
         }
         menu, created = Menu.objects.get_or_create(
             code=spec['code'],
@@ -58,14 +57,14 @@ def sync_all(Menu, Permission, Action, Role=None, RolePermission=None):
     sync_system_menus(Menu, Permission, Action)
     for menu in Menu.objects.all():
         sync_menu_permissions(Permission, Action, menu)
-    if Role is not None and Role.objects.filter(name=OWNER_ROLE, is_system_role=True).exists():
+    if Role is not None and Role.objects.filter(name=OWNER_ROLE).exists():
         ensure_owner_role(Role, RolePermission, Permission)
 
 
 def ensure_owner_role(Role, RolePermission, Permission):
-    """The built-in Owner role, holding every permission. Returns it."""
+    """The Owner role (found by name), holding every permission. Returns it."""
     role, _ = Role.objects.get_or_create(
-        name=OWNER_ROLE, defaults={'description': OWNER_DESCRIPTION, 'is_system_role': True},
+        name=OWNER_ROLE, defaults={'description': OWNER_DESCRIPTION},
     )
     have = set(RolePermission.objects.filter(role=role).values_list('permission_id', flat=True))
     RolePermission.objects.bulk_create(

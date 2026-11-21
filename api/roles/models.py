@@ -32,8 +32,6 @@ class Menu(models.Model):
     icon = models.CharField(max_length=50, blank=True)
     parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='children')
     sort_order = models.PositiveIntegerField(default=0)  # "sequence"
-    is_active = models.BooleanField(default=True)
-    is_system = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -112,7 +110,6 @@ class Role(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=80)
     description = models.TextField(blank=True)
-    is_system_role = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     permissions = models.ManyToManyField(Permission, through='RolePermission', related_name='roles')
 
@@ -128,7 +125,7 @@ class Role(models.Model):
 
     @property
     def is_owner_role(self):
-        return self.is_system_role and self.name == OWNER_ROLE
+        return self.name == OWNER_ROLE
 
 
 class RolePermission(models.Model):
