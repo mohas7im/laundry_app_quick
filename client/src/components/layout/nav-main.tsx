@@ -7,43 +7,86 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
 } from "@/components/ui/sidebar"
-import type { NavGroup, NavItem } from "@/config/navigation"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useMyMenus, type MyMenu } from "@/features/menus/api"
+import { menuIcon } from "@/lib/icons"
 
-export function NavMain({ groups }: { groups: NavGroup[] }) {
+type Group = { id: string; label?: string; items: MyMenu[] }
+
+/**
+ * Sidebar groups from /api/menus/my/ (already filtered by permission, in order).
+ * Top-level menus with a path form the first, unlabelled group; a top-level menu
+ * without a path is a heading for the menus under it.
+ */
+function toGroups(menus: MyMenu[]): Group[] {
+  const top: Group = { id: "top", items: [] }
+  const groups: Group[] = [top]
+  const headingOf = new Map<string, Group>()
+  const parentOf = new Map(menus.map((m) => [m.id, m.parent]))
+
+  const rootId = (m: MyMenu) => {
+    let id = m.id
+    while (parentOf.get(id)) id = parentOf.get(id)!
+    return id
+  }
+
+  for (const m of menus) {
+    if (m.depth === 0 && !m.path) {
+      const g = { id: m.id, label: m.name, items: [] }
+      headingOf.set(m.id, g)
+      groups.push(g)
+    } else if (m.path) {
+      ;(headingOf.get(rootId(m)) ?? top).items.push(m)
+    }
+  }
+  return groups.filter((g) => g.items.length)
+}
+
+export function NavMain() {
   const { pathname } = useLocation()
-  const { can } = useAuth()
+  const { data, isLoading } = useMyMenus()
 
-  const isVisible = (item: NavItem) => !item.permission || can(item.permission)
+  if (isLoading) {
+    return (
+      <SidebarGroup>
+        <SidebarMenu>
+          {Array.from({ length: 4 }, (_, i) => (
+            <SidebarMenuItem key={i}>
+              <SidebarMenuSkeleton showIcon />
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroup>
+    )
+  }
 
   return (
     <>
-      {groups.map((group, i) => {
-        const items = group.items.filter(isVisible)
-        if (!items.length) return null
-        return (
-          <SidebarGroup key={group.label ?? i}>
-            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {items.map((item) => (
-                  <SidebarMenuItem key={item.url}>
+      {toGroups(data ?? []).map((group) => (
+        <SidebarGroup key={group.id}>
+          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const Icon = menuIcon(item.icon)
+                return (
+                  <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
-                      tooltip={item.title}
-                      isActive={pathname === item.url}
-                      render={<NavLink to={item.url} end />}
+                      tooltip={item.name}
+                      isActive={pathname === item.path}
+                      render={<NavLink to={item.path} end />}
                     >
-                      <item.icon />
-                      <span>{item.title}</span>
+                      <Icon />
+                      <span>{item.name}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )
-      })}
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
     </>
   )
 }

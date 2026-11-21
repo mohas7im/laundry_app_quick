@@ -17,10 +17,10 @@ export interface Role {
 
 export type RoleInput = Pick<Role, "name" | "description" | "permissions">
 
-// GET /api/permissions/ — defined in roles/registry.py
+// GET /api/permissions/ — one row per menu (tree order) with that menu's permissions.
 export interface PermissionGroup {
-  module: string
-  permissions: { code: string; label: string }[]
+  menu: { id: string; code: string; name: string; depth: number; is_active: boolean }
+  permissions: { code: string; action: string; label: string }[]
 }
 
 export const roleKeys = {
@@ -39,7 +39,7 @@ export function usePermissionGroups() {
   return useQuery({
     queryKey: roleKeys.permissions,
     queryFn: async () => (await apiClient.get<PermissionGroup[]>(ENDPOINTS.permissions)).data,
-    staleTime: Infinity, // only changes when the backend is deployed
+    // changes when menus change (useSaveMenu invalidates every query)
   })
 }
 

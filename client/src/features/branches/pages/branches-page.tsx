@@ -18,7 +18,9 @@ const NO_BRANCHES: Branch[] = []
 export function BranchesPage() {
   const { data = NO_BRANCHES, isLoading } = useBranches()
   const remove = useDeleteBranch()
-  const { reload } = useAuth()
+  const { can, reload } = useAuth()
+  const canEdit = can("branches.edit")
+  const canDelete = can("branches.delete")
 
   const [editing, setEditing] = useState<Branch | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -54,16 +56,20 @@ export function BranchesPage() {
         cell: ({ row }) => (
           <RowActions
             label={row.original.name}
-            onEdit={() => {
-              setEditing(row.original)
-              setFormOpen(true)
-            }}
-            onDelete={() => setDeleting(row.original)}
+            onEdit={
+              canEdit
+                ? () => {
+                    setEditing(row.original)
+                    setFormOpen(true)
+                  }
+                : undefined
+            }
+            onDelete={canDelete ? () => setDeleting(row.original) : undefined}
           />
         ),
       },
     ],
-    [],
+    [canEdit, canDelete],
   )
 
   async function confirmDelete() {
@@ -85,6 +91,7 @@ export function BranchesPage() {
         title="Branches"
         description="Shop locations. Staff are assigned to branches on the Users page."
         actions={
+          can("branches.create") && (
           <Button
             onClick={() => {
               setEditing(null)
@@ -94,6 +101,7 @@ export function BranchesPage() {
             <PlusIcon />
             New branch
           </Button>
+          )
         }
       />
 

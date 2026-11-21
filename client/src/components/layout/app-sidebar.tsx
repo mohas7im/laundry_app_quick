@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { APP_NAME, mainNav } from "@/config/navigation"
+import { APP_NAME } from "@/config/navigation"
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -34,7 +34,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         <BranchSwitcher />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain groups={mainNav} />
+        <NavMain />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

@@ -8,17 +8,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-/** The "⋯" menu at the end of a table row. */
+/** The "⋯" menu at the end of a table row. Omit a handler to hide that action. */
 export function RowActions({
   label,
   onEdit,
   onDelete,
 }: {
   label: string
-  onEdit: () => void
-  /** Omit to hide Delete (e.g. built-in roles). */
+  onEdit?: () => void
   onDelete?: () => void
 }) {
+  if (!onEdit && !onDelete) return null
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -26,10 +26,12 @@ export function RowActions({
           <EllipsisIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onEdit}>
-            <PencilIcon />
-            Edit
-          </DropdownMenuItem>
+          {onEdit && (
+            <DropdownMenuItem onClick={onEdit}>
+              <PencilIcon />
+              Edit
+            </DropdownMenuItem>
+          )}
           {onDelete && (
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
               <Trash2Icon />

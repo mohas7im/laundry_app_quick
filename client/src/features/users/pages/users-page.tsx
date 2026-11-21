@@ -9,6 +9,7 @@ import { RowActions } from "@/components/row-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { useAuth } from "@/lib/auth/auth-context"
 import { useDeleteStaffUser, useStaffUsers, type StaffUser } from "../api"
 import { UserFormDialog } from "../components/user-form-dialog"
 
@@ -19,6 +20,9 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 export function UsersPage() {
   const { data = NO_USERS, isLoading } = useStaffUsers()
   const remove = useDeleteStaffUser()
+  const { can } = useAuth()
+  const canEdit = can("users.edit")
+  const canDelete = can("users.delete")
 
   const [editing, setEditing] = useState<StaffUser | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -75,16 +79,20 @@ export function UsersPage() {
         cell: ({ row }) => (
           <RowActions
             label={row.original.full_name}
-            onEdit={() => {
-              setEditing(row.original)
-              setFormOpen(true)
-            }}
-            onDelete={() => setDeleting(row.original)}
+            onEdit={
+              canEdit
+                ? () => {
+                    setEditing(row.original)
+                    setFormOpen(true)
+                  }
+                : undefined
+            }
+            onDelete={canDelete ? () => setDeleting(row.original) : undefined}
           />
         ),
       },
     ],
-    [],
+    [canEdit, canDelete],
   )
 
   async function confirmDelete() {
@@ -105,6 +113,7 @@ export function UsersPage() {
         title="Users"
         description="Staff accounts and the branches they can work in."
         actions={
+          can("users.create") && (
           <Button
             onClick={() => {
               setEditing(null)
@@ -114,6 +123,7 @@ export function UsersPage() {
             <PlusIcon />
             New user
           </Button>
+          )
         }
       />
 

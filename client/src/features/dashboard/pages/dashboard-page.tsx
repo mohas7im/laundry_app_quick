@@ -34,9 +34,9 @@ export function DashboardPage() {
 function ManagementOverview() {
   const { can } = useAuth()
   const cards = [
-    can("branches.manage") && <BranchesStat key="branches" />,
-    can("roles.manage") && <RolesStat key="roles" />,
-    can("users.manage") && <UsersStat key="users" />,
+    can("branches.view") && <BranchesStat key="branches" />,
+    can("roles.view") && <RolesStat key="roles" />,
+    can("users.view") && <UsersStat key="users" />,
   ].filter(Boolean)
   if (!cards.length) return null
   return <div className="grid gap-4 sm:grid-cols-3">{cards}</div>

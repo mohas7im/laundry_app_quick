@@ -26,5 +26,6 @@ export const ENDPOINTS = {
   branches: crud("/api/branches"),
   roles: crud("/api/roles"),
   permissions: "/api/permissions/",
+  menus: { ...crud("/api/menus"), my: "/api/menus/my/" },
   users: crud("/api/users"),
 } as const

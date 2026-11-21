@@ -9,6 +9,7 @@ import { RowActions } from "@/components/row-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { useAuth } from "@/lib/auth/auth-context"
 import { useDeleteRole, usePermissionGroups, useRoles, type Role } from "../api"
 import { RoleFormDialog } from "../components/role-form-dialog"
 
@@ -18,6 +19,9 @@ export function RolesPage() {
   const { data = NO_ROLES, isLoading } = useRoles()
   const groups = usePermissionGroups()
   const remove = useDeleteRole()
+  const { can } = useAuth()
+  const canEdit = can("roles.edit")
+  const canDelete = can("roles.delete")
 
   const [editing, setEditing] = useState<Role | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -61,16 +65,20 @@ export function RolesPage() {
         cell: ({ row }) => (
           <RowActions
             label={row.original.name}
-            onEdit={() => {
-              setEditing(row.original)
-              setFormOpen(true)
-            }}
-            onDelete={row.original.is_system_role ? undefined : () => setDeleting(row.original)}
+            onEdit={
+              canEdit
+                ? () => {
+                    setEditing(row.original)
+                    setFormOpen(true)
+                  }
+                : undefined
+            }
+            onDelete={canDelete ? (row.original.is_system_role ? undefined : () => setDeleting(row.original)) : undefined}
           />
         ),
       },
     ],
-    [totalPermissions],
+    [totalPermissions, canEdit, canDelete],
   )
 
   async function confirmDelete() {
@@ -91,6 +99,7 @@ export function RolesPage() {
         title="Roles & Permissions"
         description="Create roles and choose their permissions. You decide where each role applies when adding a user."
         actions={
+          can("roles.create") && (
           <Button
             onClick={() => {
               setEditing(null)
@@ -100,6 +109,7 @@ export function RolesPage() {
             <PlusIcon />
             New role
           </Button>
+          )
         }
       />
 
