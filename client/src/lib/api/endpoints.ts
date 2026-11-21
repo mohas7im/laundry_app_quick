@@ -4,6 +4,7 @@
 //   auth   → /api/auth/*   session management (JWT in HttpOnly cookies)
 //   admin  → branches, roles, permissions, users, menus
 //   branch → customers (counter work, permissions of the active branch)
+//   catalogue → services, items, price lists, prices, upcharges
 
 type Id = string | number
 
@@ -33,4 +34,10 @@ export const ENDPOINTS = {
   menus: { ...crud("/api/menus"), my: "/api/menus/my/" },
   users: crud("/api/users"),
   customers: crud("/api/customers"),
+  // catalogue & pricing
+  services: crud("/api/services"),
+  items: crud("/api/items"),
+  priceLists: crud("/api/price-lists"),
+  prices: { grid: (priceListId: Id) => `/api/prices/${priceListId}/` },
+  upcharges: crud("/api/upcharges"),
 } as const

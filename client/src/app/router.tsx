@@ -4,6 +4,11 @@ import { RequireAuth, RequireGuest, RequirePermission } from "@/components/auth/
 import { AppLayout } from "@/components/layout/app-layout"
 import { LoginPage } from "@/features/auth/pages/login-page"
 import { BranchesPage } from "@/features/branches/pages/branches-page"
+import { ItemsPage } from "@/features/catalogue/pages/items-page"
+import { PriceListsPage } from "@/features/catalogue/pages/price-lists-page"
+import { PricesPage } from "@/features/catalogue/pages/prices-page"
+import { ServicesPage } from "@/features/catalogue/pages/services-page"
+import { UpchargesPage } from "@/features/catalogue/pages/upcharges-page"
 import { CustomersPage } from "@/features/customers/pages/customers-page"
 import { DashboardPage } from "@/features/dashboard/pages/dashboard-page"
 import { MenuFormPage } from "@/features/menus/pages/menu-form-page"
@@ -30,6 +35,28 @@ export const router = createBrowserRouter([
           {
             element: <RequirePermission permission="customers.view" />,
             children: [{ path: "customers", element: <CustomersPage /> }],
+          },
+          // catalogue & pricing
+          {
+            element: <RequirePermission permission="services.view" />,
+            children: [{ path: "services", element: <ServicesPage /> }],
+          },
+          {
+            element: <RequirePermission permission="items.view" />,
+            children: [{ path: "items", element: <ItemsPage /> }],
+          },
+          {
+            element: <RequirePermission permission="price_lists.view" />,
+            children: [{ path: "price-lists", element: <PriceListsPage /> }],
+          },
+          {
+            // saving needs prices.edit; the grid is read-only without it
+            element: <RequirePermission permission="prices.view" />,
+            children: [{ path: "prices", element: <PricesPage /> }],
+          },
+          {
+            element: <RequirePermission permission="upcharges.view" />,
+            children: [{ path: "upcharges", element: <UpchargesPage /> }],
           },
           {
             element: <RequirePermission permission="branches.view" />,
