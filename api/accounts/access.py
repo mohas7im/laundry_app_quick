@@ -12,6 +12,8 @@ Permissions are "<menu code>.<action>" (see the menus table).
                                        PUT/PATCH .edit, DELETE .delete (org-wide roles, DB)
 - org_permission('users.reset')      → one specific organization-level permission (DB)
 - branch_permission('orders.create') → permission class for branch work (access-token claims)
+- branch_menu_permission('customers') → branch page's API: method → action, like menu_permission,
+                                       but from the active branch's permissions (access-token claims)
 - get_active_branch_id(request)      → branch id from the token, for filtering data
 """
 from dataclasses import dataclass, field
@@ -174,3 +176,24 @@ def menu_permission(menu_code, view_also=()):
 
     HasMenuPermission.__name__ = f'HasMenuPermission({menu_code})'
     return HasMenuPermission
+
+
+def branch_menu_permission(menu_code):
+    """
+    Permission class for a branch page's API (counter work: customers, orders).
+    GET needs <menu>.view, POST .create, PUT/PATCH .edit, DELETE .delete, in the
+    ACTIVE branch, read from the access token (roles given for one branch count).
+    """
+
+    class HasBranchMenuPermission(permissions.BasePermission):
+        message = 'You do not have permission to do this in this branch.'
+
+        def has_permission(self, request, view):
+            if not (request.user and request.user.is_authenticated):
+                return False
+            get_active_branch_id(request)  # 400 if the user has no branch
+            action = METHOD_ACTIONS.get(request.method)
+            return f'{menu_code}.{action}' in frozenset(_claims(request).get('permissions', ()))
+
+    HasBranchMenuPermission.__name__ = f'HasBranchMenuPermission({menu_code})'
+    return HasBranchMenuPermission

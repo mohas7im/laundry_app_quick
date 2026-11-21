@@ -88,7 +88,7 @@ class SchemaRuleTests(Base):
 
     def test_system_menus_loaded(self):
         codes = set(Menu.objects.filter(code__in=SYSTEM_MENU_CODES).values_list('code', flat=True))
-        self.assertEqual(codes, {'dashboard', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
+        self.assertEqual(codes, {'dashboard', 'customers', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
         self.assertEqual(list(Action.objects.values_list('code', flat=True)),
                          ['create', 'edit', 'delete', 'view', 'print'])
         self.assertEqual(Permission.objects.filter(menu__code='branches').count(), 5)
@@ -403,8 +403,8 @@ class MenuPermissionTests(Base):
 
 class MenuApiTests(Base):
     def page(self, **overrides):
-        data = {'name': 'Customers', 'router_name': 'customers', 'router_link': '/customers',
-                'router_description': 'Customer list', 'icon': 'users', 'sort_order': 5}
+        data = {'name': 'Suppliers', 'router_name': 'suppliers', 'router_link': '/suppliers',
+                'router_description': 'Supplier list', 'icon': 'users', 'sort_order': 5}
         data.update(overrides)
         return data
 
@@ -412,9 +412,9 @@ class MenuApiTests(Base):
         self.as_owner()
         res = self.client.post('/api/menus/', self.page(), format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(body(res)['code'], 'customers')  # from the name
-        self.assertEqual(Permission.objects.filter(menu__code='customers').count(), 5)
-        self.assertIn('customers.print', get_access(self.owner).org_permissions)  # owner gets new ones
+        self.assertEqual(body(res)['code'], 'suppliers')  # from the name
+        self.assertEqual(Permission.objects.filter(menu__code='suppliers').count(), 5)
+        self.assertIn('suppliers.print', get_access(self.owner).org_permissions)  # owner gets new ones
 
     def test_tree_with_sub_header(self):
         self.as_owner()
@@ -424,7 +424,7 @@ class MenuApiTests(Base):
         self.assertEqual(Permission.objects.filter(menu=sales).count(), 5)
         res = self.client.post('/api/menus/', self.page(parent=str(sales.id)), format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(Menu.objects.get(code='customers').parent, sales)
+        self.assertEqual(Menu.objects.get(code='suppliers').parent, sales)
 
     def test_validation(self):
         self.as_owner()
