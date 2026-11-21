@@ -21,7 +21,6 @@ export type NavUserProps = {
   user: {
     name: string
     email: string
-    role: string
   }
   onLogout?: () => void
 }

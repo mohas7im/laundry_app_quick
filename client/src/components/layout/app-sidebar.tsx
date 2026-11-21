@@ -20,7 +20,6 @@ import { APP_NAME, mainNav, secondaryNav } from "@/config/navigation"
 const placeholderUser = {
   name: "Shop Staff",
   email: "staff@laundry.local",
-  role: "staff",
 }
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
