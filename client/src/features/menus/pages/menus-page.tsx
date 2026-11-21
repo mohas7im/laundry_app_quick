@@ -19,7 +19,7 @@ const yesNo = (v: boolean) => (v ? "Yes" : "No")
 /** The feature list: every menu, in tree order (sortable by any column). */
 export function MenusPage() {
   const navigate = useNavigate()
-  const { data = NO_MENUS, isLoading } = useGetMenusQuery()
+  const { data = NO_MENUS, isLoading, error, refetch } = useGetMenusQuery()
   const [remove, { isLoading: removing }] = useDeleteMenuMutation()
   const { can, reload } = useAuth()
   const [deleting, setDeleting] = useState<Menu | null>(null)
@@ -109,9 +109,11 @@ export function MenusPage() {
         columns={columns}
         data={data}
         isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
         getRowId={(m) => m.id}
         searchPlaceholder="Search menus…"
-        emptyMessage="No menus yet."
+        emptyTitle="No menus yet"
         toolbar={
           can("menus.create") && (
             <Button onClick={() => navigate("/menus/new")}>

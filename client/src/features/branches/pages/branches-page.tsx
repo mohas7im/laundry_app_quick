@@ -16,7 +16,7 @@ import { BranchFormDialog } from "../components/branch-form-dialog"
 const NO_BRANCHES: Branch[] = []
 
 export function BranchesPage() {
-  const { data = NO_BRANCHES, isLoading } = useGetBranchesQuery()
+  const { data = NO_BRANCHES, isLoading, error, refetch } = useGetBranchesQuery()
   const [remove, { isLoading: removing }] = useDeleteBranchMutation()
   const { can, reload } = useAuth()
   const canEdit = can("branches.edit")
@@ -96,9 +96,12 @@ export function BranchesPage() {
         columns={columns}
         data={data}
         isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
         getRowId={(b) => String(b.id)}
         searchPlaceholder="Search branches…"
-        emptyMessage="No branches yet. Create your first branch."
+        emptyTitle="No branches yet"
+        emptyMessage="Create your first branch."
         toolbar={
           can("branches.create") && (
           <Button

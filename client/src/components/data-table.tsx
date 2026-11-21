@@ -18,19 +18,24 @@ import {
 } from "@tanstack/react-table"
 import {
   ArrowDownIcon,
+  CircleAlertIcon,
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ChevronsUpDownIcon,
+  InboxIcon,
   SearchIcon,
+  SearchXIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SelectField } from "@/components/select-field"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import {
   Table,
   TableBody,
@@ -63,7 +68,12 @@ type DataTableProps<TData extends RowData> = {
   columns: DataTableColumn<TData>[]
   data: TData[]
   isLoading?: boolean
+  /** The query's error: shows a message and a Retry button instead of rows. */
+  error?: unknown
+  onRetry?: () => void
   searchPlaceholder?: string
+  /** Shown when there are no rows (and no search). */
+  emptyTitle?: string
   emptyMessage?: string
   getRowId?: (row: TData) => string
   /** Buttons on the right of the toolbar, e.g. Create. */
@@ -75,8 +85,11 @@ export function DataTable<TData extends RowData>({
   columns,
   data,
   isLoading,
+  error,
+  onRetry,
   searchPlaceholder = "Search…",
-  emptyMessage = "Nothing here yet.",
+  emptyTitle = "Nothing here yet",
+  emptyMessage,
   getRowId,
   toolbar,
   pageSize = 10,
@@ -92,6 +105,7 @@ export function DataTable<TData extends RowData>({
   })
 
   const rows = table.getRowModel().rows
+  const search = ((table.state.globalFilter as string | undefined) ?? "").trim()
   const visibleColumns = table.getAllLeafColumns().length
   const { pageIndex, pageSize: size } = table.state.pagination
   const total = table.getPrePaginatedRowModel().rows.length
@@ -151,13 +165,35 @@ export function DataTable<TData extends RowData>({
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              Array.from({ length: 3 }, (_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={visibleColumns}>
-                    <Skeleton className="h-5 w-full" />
-                  </TableCell>
-                </TableRow>
-              ))
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={visibleColumns} className="h-40">
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Spinner />
+                    Loading…
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={visibleColumns} className="p-0 whitespace-normal">
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <CircleAlertIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>Couldn't load this list</EmptyTitle>
+                      <EmptyDescription>{getApiErrorMessage(error)}</EmptyDescription>
+                    </EmptyHeader>
+                    {onRetry && (
+                      <EmptyContent>
+                        <Button variant="outline" size="sm" onClick={onRetry}>
+                          Try again
+                        </Button>
+                      </EmptyContent>
+                    )}
+                  </Empty>
+                </TableCell>
+              </TableRow>
             ) : rows.length ? (
               rows.map((row) => (
                 <TableRow key={row.id}>
@@ -169,9 +205,29 @@ export function DataTable<TData extends RowData>({
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={visibleColumns} className="h-24 text-center text-muted-foreground">
-                  {table.state.globalFilter ? "No matches." : emptyMessage}
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={visibleColumns} className="p-0 whitespace-normal">
+                  {search ? (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <SearchXIcon />
+                        </EmptyMedia>
+                        <EmptyTitle>No results</EmptyTitle>
+                        <EmptyDescription>Nothing matches “{search}”. Try a different search.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <InboxIcon />
+                        </EmptyMedia>
+                        <EmptyTitle>{emptyTitle}</EmptyTitle>
+                        {emptyMessage && <EmptyDescription>{emptyMessage}</EmptyDescription>}
+                      </EmptyHeader>
+                    </Empty>
+                  )}
                 </TableCell>
               </TableRow>
             )}

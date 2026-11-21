@@ -17,7 +17,7 @@ const NO_ROLES: Role[] = []
 
 export function RolesPage() {
   const navigate = useNavigate()
-  const { data = NO_ROLES, isLoading } = useGetRolesQuery()
+  const { data = NO_ROLES, isLoading, error, refetch } = useGetRolesQuery()
   const [remove, { isLoading: removing }] = useDeleteRoleMutation()
   const { can } = useAuth()
   const canEdit = can("roles.edit")
@@ -84,9 +84,12 @@ export function RolesPage() {
         columns={columns}
         data={data}
         isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
         getRowId={(r) => r.id}
         searchPlaceholder="Search roles…"
-        emptyMessage="No roles yet. Create one, e.g. Cashier or Manager."
+        emptyTitle="No roles yet"
+        emptyMessage="Create one, e.g. Cashier or Manager."
         toolbar={
           can("roles.create") && (
             <Button

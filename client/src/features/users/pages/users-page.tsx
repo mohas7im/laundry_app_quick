@@ -18,7 +18,7 @@ const NO_USERS: StaffUser[] = []
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
 
 export function UsersPage() {
-  const { data = NO_USERS, isLoading } = useGetStaffUsersQuery()
+  const { data = NO_USERS, isLoading, error, refetch } = useGetStaffUsersQuery()
   const [remove, { isLoading: removing }] = useDeleteStaffUserMutation()
   const { can } = useAuth()
   const canEdit = can("users.edit")
@@ -118,9 +118,12 @@ export function UsersPage() {
         columns={columns}
         data={data}
         isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
         getRowId={(u) => String(u.id)}
         searchPlaceholder="Search name, email, branch…"
-        emptyMessage="No staff yet. Add your first user."
+        emptyTitle="No staff yet"
+        emptyMessage="Add your first user."
         toolbar={
           can("users.create") && (
           <Button
