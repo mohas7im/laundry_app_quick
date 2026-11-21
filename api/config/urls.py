@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/', include('branches.urls')),    # /api/branches/
     path('api/', include('roles.urls')),       # /api/roles/, /api/permissions/
     path('api/', include('customers.urls')),   # /api/customers/
+    path('api/', include('catalogue.urls')),   # /api/services/, items/, price-lists/, prices/, upcharges/
 ]

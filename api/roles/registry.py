@@ -27,6 +27,29 @@ SYSTEM_MENUS = [
         'router_name': 'customers', 'router_link': '/customers',
     },
     {
+        'code': 'catalogue', 'name': 'Catalogue', 'icon': 'tags', 'sort_order': 20, 'is_header': True,
+    },
+    {
+        'code': 'services', 'name': 'Services', 'icon': 'washing-machine', 'sort_order': 1, 'parent': 'catalogue',
+        'router_name': 'services', 'router_link': '/services',
+    },
+    {
+        'code': 'items', 'name': 'Items', 'icon': 'shirt', 'sort_order': 2, 'parent': 'catalogue',
+        'router_name': 'items', 'router_link': '/items',
+    },
+    {
+        'code': 'price_lists', 'name': 'Price Lists', 'icon': 'clipboard-list', 'sort_order': 3, 'parent': 'catalogue',
+        'router_name': 'price-lists', 'router_link': '/price-lists',
+    },
+    {
+        'code': 'prices', 'name': 'Prices', 'icon': 'circle-dollar-sign', 'sort_order': 4, 'parent': 'catalogue',
+        'router_name': 'prices', 'router_link': '/prices',
+    },
+    {
+        'code': 'upcharges', 'name': 'Upcharges', 'icon': 'badge-percent', 'sort_order': 5, 'parent': 'catalogue',
+        'router_name': 'upcharges', 'router_link': '/upcharges',
+    },
+    {
         'code': 'administration', 'name': 'Administration', 'icon': 'settings', 'sort_order': 90,
         'is_header': True,
     },
