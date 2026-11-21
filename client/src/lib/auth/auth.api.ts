@@ -47,22 +47,22 @@ let inFlightMeRequest: Promise<AuthUser | null> | null = null
 export const authService = {
   /** Logs in; Django sets the HttpOnly cookies (15m access + 7d refresh). */
   async login(credentials: LoginCredentials): Promise<AuthUser> {
-    const { data } = await apiClient.post<{ user: AuthUser }>(ENDPOINTS.auth.login, {
+    const { data } = await apiClient.post<{ data: AuthUser }>(ENDPOINTS.auth.login, {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
       branch_id: getLastBranchId(), // land in the last-used branch if still allowed
     })
-    cachedUser = data.user
-    return data.user
+    cachedUser = data.data
+    return data.data
   },
 
   /** Re-issues the tokens scoped to another branch (new role/permission claims). */
   async switchBranch(branchId: string): Promise<AuthUser> {
-    const { data } = await apiClient.post<{ user: AuthUser }>(ENDPOINTS.auth.switchBranch, {
+    const { data } = await apiClient.post<{ data: AuthUser }>(ENDPOINTS.auth.switchBranch, {
       branch_id: branchId,
     })
-    cachedUser = data.user
-    return data.user
+    cachedUser = data.data
+    return data.data
   },
 
   /** Blacklists the refresh token, clears the cookies and the cached user. */
@@ -88,9 +88,9 @@ export const authService = {
     inFlightMeRequest = (async () => {
       try {
         // On app start a 401 just means "not logged in" — the route guard redirects.
-        const { data } = await apiClient.get<AuthUser>(ENDPOINTS.auth.me, { skipAuthRedirect: true })
-        cachedUser = data
-        return data
+        const { data } = await apiClient.get<{ data: AuthUser | null }>(ENDPOINTS.auth.me, { skipAuthRedirect: true })
+        cachedUser = data.data
+        return data.data
       } catch {
         cachedUser = null
         return null

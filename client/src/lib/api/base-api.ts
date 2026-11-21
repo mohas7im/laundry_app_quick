@@ -11,18 +11,22 @@ export type ApiRequest = {
   params?: AxiosRequestConfig["params"]
 }
 
-/** RTK Query error: HTTP status (or "FETCH_ERROR" when the server can't be reached) and the response body. */
-export type ApiError = { status: number | "FETCH_ERROR" | "TIMEOUT"; data: unknown }
+/**
+ * RTK Query error: HTTP status (or "FETCH_ERROR" when the server can't be reached)
+ * and the response body ({ success, message, data, errors, referenced_tables }).
+ */
+export type QueryError = { status: number | "FETCH_ERROR" | "TIMEOUT"; data: unknown }
 
 /**
  * Runs every request through `apiClient`, so the CSRF header and the
  * refresh-on-401 interceptor apply to RTK Query calls too.
+ * Every response is wrapped as { success, message, data, ... }; queries and mutations get its `data`.
  */
-const axiosBaseQuery: BaseQueryFn<ApiRequest | string, unknown, ApiError> = async (args) => {
+const axiosBaseQuery: BaseQueryFn<ApiRequest | string, unknown, QueryError> = async (args) => {
   const { url, method = "GET", data, params } = typeof args === "string" ? { url: args } : args
   try {
-    const response = await apiClient.request({ url, method, data, params })
-    return { data: response.data }
+    const response = await apiClient.request<{ data: unknown }>({ url, method, data, params })
+    return { data: response.data.data }
   } catch (err) {
     if (isAxiosError(err)) {
       if (!err.response) {
