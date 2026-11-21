@@ -8,6 +8,16 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import User
 
+
+def body(res):
+    """The `data` of a BaseResult response."""
+    return res.data['data']
+
+
+def error_fields(res):
+    """Field names that have errors in a BaseResult response."""
+    return {e['field_name'] for e in res.data['errors']}
+
 ACCESS = settings.AUTH_COOKIE['ACCESS_NAME']
 REFRESH = settings.AUTH_COOKIE['REFRESH_NAME']
 
@@ -27,8 +37,8 @@ class AuthFlowTests(APITestCase):
     def test_login_sets_httponly_cookies_with_lifetimes(self):
         res = self.login()
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data['user']['email'], 'staff@shop.com')
-        self.assertNotIn('access', res.data)  # tokens never in the body
+        self.assertEqual(body(res)['email'], 'staff@shop.com')
+        self.assertNotIn('access', body(res))  # tokens never in the body
 
         access, refresh = res.cookies[ACCESS], res.cookies[REFRESH]
         self.assertTrue(access['httponly'])
@@ -48,7 +58,7 @@ class AuthFlowTests(APITestCase):
         self.login()
         res = self.client.get('/api/auth/me/')
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data['full_name'], 'Ajmal')
+        self.assertEqual(body(res)['full_name'], 'Ajmal')
 
     def test_unsafe_request_needs_csrf_header(self):
         self.login()
@@ -76,7 +86,7 @@ class AuthFlowTests(APITestCase):
         self.login()
         refresh = self.client.cookies[REFRESH].value
         res = self.client.post('/api/auth/logout/')
-        self.assertEqual(res.status_code, 204)
+        self.assertEqual(res.status_code, 200)
         self.assertEqual(res.cookies[ACCESS].value, '')
         self.assertEqual(res.cookies[REFRESH].value, '')
 

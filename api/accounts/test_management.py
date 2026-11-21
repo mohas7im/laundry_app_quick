@@ -12,6 +12,7 @@ from roles.seed import ensure_owner_role, sync_menu_permissions
 from .access import branch_permission, get_access
 from .models import User
 from .tokens import build_tokens
+from .tests import body, error_fields
 
 PASSWORD = 'Str0ng-pass-123'
 
@@ -133,17 +134,20 @@ class BranchApiTests(Base):
         self.as_owner()
         res = self.client.post('/api/branches/', {'name': 'Abu Dhabi', 'code': 'auh-1'}, format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['code'], 'AUH-1')
-        bid = res.data['id']
-        self.assertEqual(len(self.client.get('/api/branches/').data), 3)
-        self.assertFalse(self.client.patch(f'/api/branches/{bid}/', {'is_active': False}, format='json').data['is_active'])
-        self.assertEqual(self.client.delete(f'/api/branches/{bid}/').status_code, 204)
+        self.assertEqual(body(res)['code'], 'AUH-1')
+        bid = body(res)['id']
+        self.assertEqual(len(body(self.client.get('/api/branches/'))), 3)
+        self.assertFalse(body(self.client.patch(f'/api/branches/{bid}/', {'is_active': False}, format='json'))['is_active'])
+        self.assertEqual(self.client.delete(f'/api/branches/{bid}/').status_code, 200)
 
     def test_cannot_delete_branch_with_staff(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
         self.as_owner()
         res = self.client.delete(f'/api/branches/{self.dxb.id}/')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
+        self.assertFalse(res.data['success'])
+        self.assertEqual(res.data['referenced_tables'], ['user_branch_assignments', 'user_roles'])
+        self.assertEqual(res.data['errors'][0]['error_code'], 'REFERENCED')
 
     def test_admin_role_can_manage_branch_staff_cannot(self):
         admin = self.make_user('admin@shop.com', roles=[(self.admin, None)])
@@ -167,16 +171,16 @@ class RoleApiTests(Base):
         self.as_owner()
         res = self.client.post('/api/roles/', {'name': 'Ironing', 'description': 'Press'}, format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['permission_count'], 0)
-        url = f"/api/permissions/roles/{res.data['id']}/"
+        self.assertEqual(body(res)['permission_count'], 0)
+        url = f"/api/permissions/roles/{body(res)['id']}/"
 
         res = self.client.put(url, {'permissions': ['orders.view', 'orders.print', 'orders.view']}, format='json')
         self.assertEqual(res.status_code, 200, res.data)
-        self.assertEqual(res.data['permissions'], ['orders.print', 'orders.view'])
-        self.assertEqual(self.client.get(url).data['permissions'], ['orders.print', 'orders.view'])
+        self.assertEqual(body(res)['permissions'], ['orders.print', 'orders.view'])
+        self.assertEqual(body(self.client.get(url))['permissions'], ['orders.print', 'orders.view'])
 
         res = self.client.put(url, {'permissions': ['orders.view']}, format='json')  # replaces, not adds
-        self.assertEqual(res.data['permissions'], ['orders.view'])
+        self.assertEqual(body(res)['permissions'], ['orders.view'])
 
     def test_unknown_permission_and_duplicate_name(self):
         self.as_owner()
@@ -211,12 +215,12 @@ class RoleApiTests(Base):
     def test_cannot_delete_role_in_use(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
         self.as_owner()
-        self.assertEqual(self.client.delete(f'/api/roles/{self.cashier.id}/').status_code, 400)
-        self.assertEqual(self.client.delete(f'/api/roles/{self.manager.id}/').status_code, 204)
+        self.assertEqual(self.client.delete(f'/api/roles/{self.cashier.id}/').status_code, 409)
+        self.assertEqual(self.client.delete(f'/api/roles/{self.manager.id}/').status_code, 200)
 
     def test_permission_matrix(self):
         self.as_owner()
-        data = self.client.get('/api/permissions/').data
+        data = body(self.client.get('/api/permissions/'))
         self.assertEqual([a['code'] for a in data['actions']], ['create', 'edit', 'delete', 'view', 'print'])
         rows = {r['code']: r for r in data['menus']}
         self.assertTrue(rows['administration']['is_header'])
@@ -243,9 +247,9 @@ class UserApiTests(Base):
         self.as_owner()
         res = self.client.post('/api/users/', self.payload(), format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['email'], 'new@shop.com')
-        self.assertNotIn('password', res.data)
-        got = {(r['branch_name'], r['role_name']) for r in res.data['roles']}
+        self.assertEqual(body(res)['email'], 'new@shop.com')
+        self.assertNotIn('password', body(res))
+        got = {(r['branch_name'], r['role_name']) for r in body(res)['roles']}
         self.assertEqual(got, {('Dubai Marina', 'Branch Manager'), ('Sharjah', 'Cashier')})
         user = User.objects.get(email='new@shop.com')
         self.assertEqual(set(user.branch_assignments.values_list('branch__code', flat=True)), {'DXB1', 'SHJ1'})
@@ -259,8 +263,8 @@ class UserApiTests(Base):
 
     def test_validation(self):
         self.as_owner()
-        self.assertIn('roles', self.client.post('/api/users/', self.payload(roles=[]), format='json').data)
-        self.assertIn('password', self.client.post('/api/users/', self.payload(password='123'), format='json').data)
+        self.assertIn('roles', error_fields(self.client.post('/api/users/', self.payload(roles=[]), format='json')))
+        self.assertIn('password', error_fields(self.client.post('/api/users/', self.payload(password='123'), format='json')))
         dup = [{'role': str(self.cashier.id), 'branch': str(self.dxb.id)}] * 2
         self.assertEqual(self.client.post('/api/users/', self.payload(roles=dup), format='json').status_code, 400)
 
@@ -324,7 +328,7 @@ class TokenClaimTests(Base):
         self.assertEqual(c['active_branch_id'], str(self.dxb.id))   # first branch by name
         self.assertEqual(c['roles'], ['Cashier'])
         self.assertEqual(c['permissions'], ['orders.create', 'orders.view'])
-        me = res.data['user']
+        me = body(res)
         self.assertEqual(me['active_branch_id'], str(self.dxb.id))
         self.assertEqual([b['code'] for b in me['branches']], ['DXB1', 'SHJ1'])
 
@@ -403,7 +407,7 @@ class MenuApiTests(Base):
         self.as_owner()
         res = self.client.post('/api/menus/', self.page(), format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['code'], 'customers')  # from the name
+        self.assertEqual(body(res)['code'], 'customers')  # from the name
         self.assertEqual(Permission.objects.filter(menu__code='customers').count(), 5)
         self.assertIn('customers.print', get_access(self.owner).org_permissions)  # owner gets new ones
 
@@ -420,14 +424,14 @@ class MenuApiTests(Base):
     def test_validation(self):
         self.as_owner()
         post = lambda **kw: self.client.post('/api/menus/', self.page(**kw), format='json')  # noqa: E731
-        self.assertIn('router_link', post(router_link='').data)          # a page needs a link
-        self.assertIn('router_name', post(router_name='').data)          # and a router name
-        self.assertIn('router_link', post(router_link='orders').data)    # must start with /
-        self.assertIn('router_link', post(router_link='/orders').data)   # already used
-        self.assertIn('code', post(code='Bad Code').data)
+        self.assertIn('router_link', error_fields(post(router_link='')))          # a page needs a link
+        self.assertIn('router_name', error_fields(post(router_name='')))          # and a router name
+        self.assertIn('router_link', error_fields(post(router_link='orders')))    # must start with /
+        self.assertIn('router_link', error_fields(post(router_link='/orders')))   # already used
+        self.assertIn('code', error_fields(post(code='Bad Code')))
         both = self.client.post('/api/menus/', {'name': 'X', 'is_header': True, 'is_sub_header': True},
                                 format='json')
-        self.assertIn('is_sub_header', both.data)
+        self.assertIn('is_sub_header', error_fields(both))
 
     def test_system_menus_keep_their_structure(self):
         self.as_owner()
@@ -447,17 +451,17 @@ class MenuApiTests(Base):
         inner = make_menu('innerpage', parent=top)
         self.assertEqual(self.client.patch(f'/api/menus/{top.id}/', {'parent': str(inner.id)},
                                            format='json').status_code, 400)
-        self.assertEqual(self.client.delete(f'/api/menus/{top.id}/').status_code, 400)  # has a child
-        self.assertEqual(self.client.delete(f'/api/menus/{inner.id}/').status_code, 204)
+        self.assertEqual(self.client.delete(f'/api/menus/{top.id}/').status_code, 409)  # has a child
+        self.assertEqual(self.client.delete(f'/api/menus/{inner.id}/').status_code, 200)
 
     def test_my_menus_follow_token_permissions(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
         self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
-        menus = self.client.get('/api/menus/my/').data
+        menus = body(self.client.get('/api/menus/my/'))
         self.assertEqual([m['code'] for m in menus], ['orders'])  # cashier: orders.view only
 
         self.client.post('/api/auth/login/', {'email': 'owner@shop.com', 'password': PASSWORD}, format='json')
-        menus = {m['code']: m for m in self.client.get('/api/menus/my/').data}
+        menus = {m['code']: m for m in body(self.client.get('/api/menus/my/'))}
         self.assertTrue(menus['administration']['is_header'])
         codes = list(menus)
         self.assertLess(codes.index('administration'), codes.index('menus'))
@@ -466,10 +470,65 @@ class MenuApiTests(Base):
         only_header = make_role('Header only', ['administration.view'])
         self.make_user(roles=[(only_header, self.dxb)])
         self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
-        self.assertEqual(self.client.get('/api/menus/my/').data, [])
+        self.assertEqual(body(self.client.get('/api/menus/my/')), [])
 
     def test_inactive_menu_hidden(self):
         Menu.objects.filter(code='orders').update(is_active=False)
         self.make_user(roles=[(self.cashier, self.dxb)])
         self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
-        self.assertEqual(self.client.get('/api/menus/my/').data, [])
+        self.assertEqual(body(self.client.get('/api/menus/my/')), [])
+
+
+class ResponseFormatTests(Base):
+    """Every response is a BaseResult: success, message, data, errors, referenced_tables."""
+
+    KEYS = {'success', 'message', 'data', 'errors', 'referenced_tables'}
+
+    def test_success_shape(self):
+        self.as_owner()
+        res = self.client.get('/api/branches/')
+        self.assertEqual(set(res.data), self.KEYS)
+        self.assertTrue(res.data['success'])
+        self.assertEqual(res.data['message'], 'Branches retrieved successfully.')
+        self.assertEqual(res.data['errors'], [])
+
+    def test_validation_errors_have_codes_and_fields(self):
+        self.as_owner()
+        res = self.client.post('/api/branches/', {'name': 'Dubai Marina'}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(res.data['success'])
+        by_field = {e['field_name']: e for e in res.data['errors']}
+        self.assertEqual(by_field['code']['error_code'], 'REQUIRED')
+        self.assertEqual(by_field['name']['error_code'], 'VALIDATION_ERROR')  # duplicate name rule
+
+    def test_nested_field_paths(self):
+        self.as_owner()
+        res = self.client.post('/api/users/', {
+            'email': 'x@shop.com', 'full_name': 'X', 'password': PASSWORD,
+            'roles': [{'role': 'not-a-uuid'}],
+        }, format='json')
+        self.assertIn('roles[0].role', error_fields(res))
+
+    def test_not_authenticated_and_permission_denied(self):
+        res = self.client.get('/api/branches/')
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.data['errors'][0]['error_code'], 'NOT_AUTHENTICATED')
+
+        self.client.force_authenticate(self.make_user(roles=[(self.cashier, self.dxb)]))
+        res = self.client.get('/api/branches/')
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.data['errors'][0]['error_code'], 'PERMISSION_DENIED')
+
+    def test_business_rule_refusal(self):
+        self.as_owner()
+        res = self.client.delete(f'/api/roles/{self.owner_role.id}/')
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.data['errors'][0]['error_code'], 'OPERATION_NOT_ALLOWED')
+        res = self.client.delete(f'/api/users/{self.owner.id}/')  # yourself
+        self.assertEqual(res.data['errors'][0]['error_code'], 'OPERATION_NOT_ALLOWED')
+
+    def test_delete_success_has_no_data(self):
+        self.as_owner()
+        res = self.client.delete(f'/api/roles/{self.manager.id}/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual((res.data['data'], res.data['message']), (None, 'Role deleted successfully.'))

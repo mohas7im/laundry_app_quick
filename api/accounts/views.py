@@ -1,14 +1,15 @@
 from django.conf import settings
 from django.contrib.auth.models import update_last_login
 from django.middleware.csrf import get_token
-from rest_framework import exceptions, permissions, status, viewsets
-from rest_framework.response import Response
+from rest_framework import exceptions, permissions, viewsets
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from common.drf import ResultViewSetMixin
+from common.results import BaseResult, ErrorCode
 from .access import get_access, menu_permission
 from .cookies import clear_auth_cookies, set_auth_cookies
 from .models import User
@@ -24,11 +25,11 @@ from .serializers import (
 from .tokens import build_tokens, revoke_all_sessions
 
 
-def _auth_response(request, user, refresh, access_token, access, active):
-    """Body = current user (with active branch); cookies = the new token pair."""
+def _auth_response(request, message, user, refresh, access_token, access, active):
+    """data = current user (with active branch); cookies = the new token pair."""
     get_token(request)  # make sure the csrftoken cookie is set/rotated
     context = {'access': access, 'active_branch_id': active.branch.id if active else None}
-    response = Response({'user': MeSerializer(user, context=context).data})
+    response = BaseResult.ok(MeSerializer(user, context=context).data, message).to_response()
     return set_auth_cookies(response, access_token, refresh)
 
 
@@ -57,7 +58,7 @@ class CsrfView(APIView):
     authentication_classes = []
 
     def get(self, request):
-        return Response({'csrfToken': get_token(request)})
+        return BaseResult.ok({'csrf_token': get_token(request)}, 'CSRF cookie set.').to_response()
 
 
 class LoginView(APIView):
@@ -72,7 +73,7 @@ class LoginView(APIView):
 
         tokens = build_tokens(user, serializer.validated_data.get('branch_id'))
         update_last_login(None, user)
-        return _auth_response(request, user, *tokens)
+        return _auth_response(request, 'Logged in successfully.', user, *tokens)
 
 
 class RefreshView(APIView):
@@ -86,7 +87,7 @@ class RefreshView(APIView):
     def post(self, request):
         raw = request.COOKIES.get(settings.AUTH_COOKIE['REFRESH_NAME'])
         if not raw:
-            return Response({'detail': 'Refresh token missing.'}, status=status.HTTP_401_UNAUTHORIZED)
+            return BaseResult.failure(ErrorCode.NOT_AUTHENTICATED, 'Refresh token missing.').to_response()
 
         try:
             old = RefreshToken(raw)  # verifies signature, expiry and blacklist
@@ -100,15 +101,13 @@ class RefreshView(APIView):
         old.blacklist()
         refresh, access_token, _, active = build_tokens(user, old.get('active_branch_id'))
         get_token(request)
-        response = Response({
-            'detail': 'Token refreshed.',
-            'active_branch_id': str(active.branch.id) if active else None,
-        })
+        data = {'active_branch_id': str(active.branch.id) if active else None}
+        response = BaseResult.ok(data, 'Token refreshed.').to_response()
         return set_auth_cookies(response, access_token, refresh)
 
     @staticmethod
     def _reject():
-        response = Response({'detail': 'Refresh token invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
+        response = BaseResult.failure(ErrorCode.NOT_AUTHENTICATED, 'Refresh token invalid or expired.').to_response()
         return clear_auth_cookies(response)
 
 
@@ -122,11 +121,11 @@ class SwitchBranchView(APIView):
         branch_id = serializer.validated_data['branch_id']
 
         if get_access(request.user).branch(branch_id) is None:
-            return Response({'detail': 'You do not have access to this branch.'}, status=status.HTTP_403_FORBIDDEN)
+            return BaseResult.failure(ErrorCode.PERMISSION_DENIED, 'You do not have access to this branch.').to_response()
 
         _blacklist_cookie_refresh(request)
         tokens = build_tokens(request.user, branch_id)
-        return _auth_response(request, request.user, *tokens)
+        return _auth_response(request, 'Branch switched.', request.user, *tokens)
 
 
 class LogoutView(APIView):
@@ -135,7 +134,7 @@ class LogoutView(APIView):
 
     def post(self, request):
         _blacklist_cookie_refresh(request)
-        response = Response(status=status.HTTP_204_NO_CONTENT)
+        response = BaseResult.ok(message='Logged out.').to_response()
         return clear_auth_cookies(response)
 
 
@@ -145,7 +144,7 @@ class MeView(APIView):
 
     def get(self, request):
         context = {'active_branch_id': _token_branch_id(request)}
-        return Response(MeSerializer(request.user, context=context).data)
+        return BaseResult.ok(MeSerializer(request.user, context=context).data, 'User retrieved successfully.').to_response()
 
 
 class ChangePasswordView(APIView):
@@ -161,11 +160,11 @@ class ChangePasswordView(APIView):
         # Log out other devices, then issue a fresh pair for this session (same branch).
         revoke_all_sessions(request.user)
         refresh, access_token, _, _ = build_tokens(request.user, _token_branch_id(request))
-        response = Response({'detail': 'Password changed.'})
+        response = BaseResult.ok(message='Password changed.').to_response()
         return set_auth_cookies(response, access_token, refresh)
 
 
-class StaffUserViewSet(viewsets.ModelViewSet):
+class StaffUserViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     """Users menu: view/create/edit/delete accounts. Only owners may change an owner's account."""
     serializer_class = StaffUserSerializer
     permission_classes = [menu_permission('users')]
@@ -194,9 +193,10 @@ class StaffUserViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         if instance.pk == self.request.user.pk:
-            raise exceptions.ValidationError({'detail': "You can't delete your own account."})
+            raise exceptions.ValidationError({'detail': "You can't delete your own account."}, code='not_allowed')
         self._guard_owner_target(instance)
         if is_owner_user(instance) and not other_active_owner_exists(instance):
-            raise exceptions.ValidationError({'detail': 'This is the only active owner. Add another owner first.'})
+            raise exceptions.ValidationError(
+                {'detail': 'This is the only active owner. Add another owner first.'}, code='not_allowed')
         revoke_all_sessions(instance)
         instance.delete()

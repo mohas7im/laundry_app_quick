@@ -1,10 +1,10 @@
-from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, status, viewsets
-from rest_framework.response import Response
+from rest_framework import permissions, viewsets
 from rest_framework.views import APIView
 
 from accounts.access import get_access, menu_permission, org_permission
+from common.drf import ResultViewSetMixin
+from common.results import BaseResult, ErrorCode
 from .models import Action, Menu, Role
 from .serializers import MenuSerializer, RolePermissionsSerializer, RoleSerializer
 
@@ -26,22 +26,18 @@ def menu_tree(menus):
     return ordered
 
 
-class RoleViewSet(viewsets.ModelViewSet):
+class RoleViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
     # the users form and the permissions page also need the role list
     permission_classes = [menu_permission('roles', view_also=['users.view', 'permissions.view'])]
 
+    referenced_message = 'This role is assigned to users. Change their roles first.'
+
     def destroy(self, request, *args, **kwargs):
         if self.get_object().is_system_role:
-            return Response({'detail': "Built-in roles can't be deleted."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            return super().destroy(request, *args, **kwargs)
-        except ProtectedError:
-            return Response(
-                {'detail': 'This role is assigned to users. Change their roles first.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "Built-in roles can't be deleted.").to_response()
+        return super().destroy(request, *args, **kwargs)
 
 
 class RolePermissionsView(APIView):
@@ -53,14 +49,14 @@ class RolePermissionsView(APIView):
 
     def get(self, request, role_id):
         role = get_object_or_404(Role, pk=role_id)
-        return Response(self._body(role))
+        return BaseResult.ok(self._body(role), 'Permissions retrieved successfully.').to_response()
 
     def put(self, request, role_id):
         role = get_object_or_404(Role, pk=role_id)
         serializer = RolePermissionsSerializer(data=request.data, context={'role': role})
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(self._body(role))
+        return BaseResult.ok(self._body(role), 'Permissions saved successfully.').to_response()
 
     @staticmethod
     def _body(role):
@@ -77,7 +73,7 @@ class PermissionMatrixView(APIView):
     def get(self, request):
         actions = list(Action.objects.all())
         menus = menu_tree(list(Menu.objects.prefetch_related('permissions__action')))
-        return Response({
+        return BaseResult.ok({
             'actions': [{'code': a.code, 'name': a.name} for a in actions],
             'menus': [
                 {
@@ -87,10 +83,10 @@ class PermissionMatrixView(APIView):
                 }
                 for m in menus
             ],
-        })
+        }, 'Permissions retrieved successfully.').to_response()
 
 
-class MenuViewSet(viewsets.ModelViewSet):
+class MenuViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     queryset = Menu.objects.all()
     serializer_class = MenuSerializer
     permission_classes = [menu_permission('menus')]
@@ -100,15 +96,14 @@ class MenuViewSet(viewsets.ModelViewSet):
         data = self.get_serializer(menus, many=True).data
         for row, m in zip(data, menus):
             row['depth'] = m.depth
-        return Response(data)
+        return BaseResult.ok(data, 'Menus retrieved successfully.').to_response()
+
+    referenced_message = 'Move or delete the menus under it first.'
 
     def destroy(self, request, *args, **kwargs):
         if self.get_object().is_system:
-            return Response({'detail': "Built-in menus can't be deleted."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            return super().destroy(request, *args, **kwargs)
-        except ProtectedError:
-            return Response({'detail': 'Move or delete the menus under it first.'}, status=status.HTTP_400_BAD_REQUEST)
+            return BaseResult.failure(ErrorCode.OPERATION_NOT_ALLOWED, "Built-in menus can't be deleted.").to_response()
+        return super().destroy(request, *args, **kwargs)
 
 
 class MyMenuView(APIView):
@@ -136,11 +131,11 @@ class MyMenuView(APIView):
                 visible.add(parent.id)
                 parent = by_id.get(parent.parent_id)
 
-        return Response([
+        return BaseResult.ok([
             {
                 'id': str(m.id), 'code': m.code, 'name': m.name, 'icon': m.icon,
                 'parent': str(m.parent_id) if m.parent_id else None, 'depth': m.depth,
                 'is_header': m.is_header, 'is_sub_header': m.is_sub_header, 'router_link': m.router_link,
             }
             for m in menus if m.id in visible
-        ])
+        ], 'Menus retrieved successfully.').to_response()
