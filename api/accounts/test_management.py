@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken
 
 from branches.models import Branch, UserBranchAssignment
-from roles.models import Menu, Permission, Role, RolePermission, UserRole
+from roles.models import Action, Menu, Permission, Role, RolePermission, UserRole
 from roles.seed import ensure_owner_role, sync_menu_permissions
 from .access import branch_permission, get_access
 from .models import User
@@ -17,13 +17,16 @@ PASSWORD = 'Str0ng-pass-123'
 
 
 CRUD = ['view', 'create', 'edit', 'delete']
-ADMIN_CODES = [f'{m}.{a}' for m in ('branches', 'users', 'roles', 'menus') for a in CRUD]
+ADMIN_CODES = [f'{m}.{a}' for m in ('branches', 'users', 'roles', 'permissions', 'menus') for a in CRUD]
 
 
-def make_menu(code, actions, path=None, parent=None):
-    menu = Menu.objects.create(code=code, name=code.title(), path=f'/{code}' if path is None else path,
-                               parent=parent)
-    sync_menu_permissions(Permission, menu, actions)
+def make_menu(code, parent=None, header=False):
+    """A page (with a link) or a header (no link). Either way: one permission per action."""
+    menu = Menu.objects.create(
+        code=code, name=code.title(), parent=parent, is_header=header,
+        router_name='' if header else code, router_link='' if header else f'/{code}',
+    )
+    sync_menu_permissions(Permission, Action, menu)
     return menu
 
 
@@ -39,8 +42,8 @@ class Base(APITestCase):
     def setUp(self):
         cache.clear()  # reset the login rate limit between tests
         # menus a future Orders/Reports page would add; system menus come from the migration
-        make_menu('orders', CRUD)
-        make_menu('reports', ['view'])
+        make_menu('orders')
+        make_menu('reports')
         self.owner_role = ensure_owner_role(Role, RolePermission, Permission)
         self.owner = User.objects.create_user(email='owner@shop.com', password=PASSWORD, full_name='Owner')
         UserRole.objects.create(user=self.owner, role=self.owner_role)
@@ -83,8 +86,11 @@ class SchemaRuleTests(Base):
 
     def test_system_menus_loaded(self):
         codes = set(Menu.objects.filter(is_system=True).values_list('code', flat=True))
-        self.assertEqual(codes, {'dashboard', 'administration', 'branches', 'roles', 'users', 'menus'})
-        self.assertEqual(Permission.objects.filter(menu__code='branches').count(), 4)
+        self.assertEqual(codes, {'dashboard', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
+        self.assertEqual(list(Action.objects.values_list('code', flat=True)),
+                         ['create', 'edit', 'delete', 'view', 'print'])
+        self.assertEqual(Permission.objects.filter(menu__code='branches').count(), 5)
+        self.assertEqual(Permission.objects.filter(menu__code='administration').count(), 5)  # headers too
         self.assertTrue(Permission.objects.filter(code='dashboard.view').exists())
 
 
@@ -157,29 +163,50 @@ class BranchApiTests(Base):
 
 
 class RoleApiTests(Base):
-    def test_create_with_permissions(self):
+    def test_create_role_then_set_permissions(self):
         self.as_owner()
-        res = self.client.post('/api/roles/', {
-            'name': 'Ironing', 'permissions': ['orders.view', 'orders.edit', 'orders.view'],
-        }, format='json')
+        res = self.client.post('/api/roles/', {'name': 'Ironing', 'description': 'Press'}, format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['permissions'], ['orders.edit', 'orders.view'])
-        self.assertFalse(res.data['is_system_role'])
-        self.assertEqual(RolePermission.objects.filter(role_id=res.data['id']).count(), 2)
+        self.assertEqual(res.data['permission_count'], 0)
+        url = f"/api/permissions/roles/{res.data['id']}/"
+
+        res = self.client.put(url, {'permissions': ['orders.view', 'orders.print', 'orders.view']}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data['permissions'], ['orders.print', 'orders.view'])
+        self.assertEqual(self.client.get(url).data['permissions'], ['orders.print', 'orders.view'])
+
+        res = self.client.put(url, {'permissions': ['orders.view']}, format='json')  # replaces, not adds
+        self.assertEqual(res.data['permissions'], ['orders.view'])
 
     def test_unknown_permission_and_duplicate_name(self):
         self.as_owner()
-        self.assertEqual(self.client.post('/api/roles/', {'name': 'X', 'permissions': ['all.everything']},
-                                          format='json').status_code, 400)
-        self.assertEqual(self.client.post('/api/roles/', {'name': 'cashier', 'permissions': []},
-                                          format='json').status_code, 400)
+        url = f'/api/permissions/roles/{self.cashier.id}/'
+        self.assertEqual(self.client.put(url, {'permissions': ['all.everything']}, format='json').status_code, 400)
+        self.assertEqual(self.client.post('/api/roles/', {'name': 'cashier'}, format='json').status_code, 400)
+
+    def test_permissions_menu_is_separate_from_roles(self):
+        # roles.* alone doesn't open the Permissions menu
+        roles_admin = make_role('Roles admin', [f'roles.{a}' for a in CRUD])
+        self.client.force_authenticate(self.make_user('ra@shop.com', roles=[(roles_admin, None)]))
+        self.assertEqual(self.client.get(f'/api/permissions/roles/{self.cashier.id}/').status_code, 403)
+        self.assertEqual(self.client.get('/api/permissions/').status_code, 403)
+
+        # permissions.view can read the grid and the role list, not save
+        viewer = make_role('Permission viewer', ['permissions.view'])
+        self.client.force_authenticate(self.make_user(roles=[(viewer, None)]))
+        self.assertEqual(self.client.get('/api/permissions/').status_code, 200)
+        self.assertEqual(self.client.get('/api/roles/').status_code, 200)
+        url = f'/api/permissions/roles/{self.cashier.id}/'
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.put(url, {'permissions': []}, format='json').status_code, 403)
 
     def test_owner_role_is_protected(self):
         self.as_owner()
         url = f'/api/roles/{self.owner_role.id}/'
         self.assertEqual(self.client.delete(url).status_code, 400)
         self.assertEqual(self.client.patch(url, {'name': 'Boss'}, format='json').status_code, 400)
-        self.assertEqual(self.client.patch(url, {'permissions': []}, format='json').status_code, 400)
+        self.assertEqual(self.client.put(f'/api/permissions/roles/{self.owner_role.id}/', {'permissions': []},
+                                         format='json').status_code, 400)
 
     def test_cannot_delete_role_in_use(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
@@ -187,14 +214,17 @@ class RoleApiTests(Base):
         self.assertEqual(self.client.delete(f'/api/roles/{self.cashier.id}/').status_code, 400)
         self.assertEqual(self.client.delete(f'/api/roles/{self.manager.id}/').status_code, 204)
 
-    def test_permission_list_is_menu_tree(self):
+    def test_permission_matrix(self):
         self.as_owner()
-        rows = self.client.get('/api/permissions/').data
-        names = [(r['menu']['code'], r['menu']['depth']) for r in rows]
-        self.assertLess(names.index(('administration', 0)), names.index(('branches', 1)))
-        branches = next(r for r in rows if r['menu']['code'] == 'branches')
-        self.assertEqual({p['action'] for p in branches['permissions']}, set(CRUD))
-        self.assertIn({'code': 'branches.create', 'action': 'create', 'label': 'Create'}, branches['permissions'])
+        data = self.client.get('/api/permissions/').data
+        self.assertEqual([a['code'] for a in data['actions']], ['create', 'edit', 'delete', 'view', 'print'])
+        rows = {r['code']: r for r in data['menus']}
+        self.assertTrue(rows['administration']['is_header'])
+        self.assertEqual(rows['administration']['permissions']['view'], 'administration.view')
+        self.assertEqual(rows['branches']['depth'], 1)
+        self.assertEqual(rows['branches']['permissions']['print'], 'branches.print')
+        codes = [r['code'] for r in data['menus']]
+        self.assertLess(codes.index('administration'), codes.index('branches'))
 
 
 class UserApiTests(Base):
@@ -359,62 +389,84 @@ class MenuPermissionTests(Base):
         self.client.force_authenticate(self.make_user(roles=[(hr, None)]))
         self.assertEqual(self.client.get('/api/branches/').status_code, 200)
         self.assertEqual(self.client.get('/api/roles/').status_code, 200)
-        self.assertEqual(self.client.post('/api/roles/', {'name': 'X', 'permissions': []}, format='json').status_code, 403)
+        self.assertEqual(self.client.post('/api/roles/', {'name': 'X'}, format='json').status_code, 403)
 
 
 class MenuApiTests(Base):
-    def test_create_menu_creates_permissions_and_owner_gets_them(self):
+    def page(self, **overrides):
+        data = {'name': 'Customers', 'router_name': 'customers', 'router_link': '/customers',
+                'router_description': 'Customer list', 'icon': 'users', 'sort_order': 5}
+        data.update(overrides)
+        return data
+
+    def test_create_page_gets_a_permission_per_action(self):
         self.as_owner()
-        res = self.client.post('/api/menus/', {
-            'code': 'customers', 'name': 'Customers', 'path': '/customers', 'icon': 'users',
-            'actions': ['view', 'create', 'export'],
-        }, format='json')
+        res = self.client.post('/api/menus/', self.page(), format='json')
         self.assertEqual(res.status_code, 201, res.data)
-        self.assertEqual(res.data['actions'], ['view', 'create', 'export'])
-        self.assertEqual(set(Permission.objects.filter(menu__code='customers').values_list('code', flat=True)),
-                         {'customers.view', 'customers.create', 'customers.export'})
-        self.assertIn('customers.export', get_access(self.owner).org_permissions)
+        self.assertEqual(res.data['code'], 'customers')  # from the name
+        self.assertEqual(Permission.objects.filter(menu__code='customers').count(), 5)
+        self.assertIn('customers.print', get_access(self.owner).org_permissions)  # owner gets new ones
 
-    def test_removing_action_removes_permission_from_roles(self):
-        role = make_role('Ops', ['orders.view', 'orders.delete'])
+    def test_tree_with_sub_header(self):
         self.as_owner()
-        orders = Menu.objects.get(code='orders')
-        res = self.client.patch(f'/api/menus/{orders.id}/', {'actions': ['view', 'create', 'edit']}, format='json')
-        self.assertEqual(res.status_code, 200, res.data)
-        self.assertFalse(Permission.objects.filter(code='orders.delete').exists())
-        self.assertEqual(list(role.permissions.values_list('code', flat=True)), ['orders.view'])
+        res = self.client.post('/api/menus/', {'name': 'Sales', 'is_sub_header': True}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)  # no link needed for a sub-header
+        sales = Menu.objects.get(code='sales')
+        self.assertEqual(Permission.objects.filter(menu=sales).count(), 5)
+        res = self.client.post('/api/menus/', self.page(parent=str(sales.id)), format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(Menu.objects.get(code='customers').parent, sales)
 
-    def test_rules(self):
+    def test_validation(self):
+        self.as_owner()
+        post = lambda **kw: self.client.post('/api/menus/', self.page(**kw), format='json')  # noqa: E731
+        self.assertIn('router_link', post(router_link='').data)          # a page needs a link
+        self.assertIn('router_name', post(router_name='').data)          # and a router name
+        self.assertIn('router_link', post(router_link='orders').data)    # must start with /
+        self.assertIn('router_link', post(router_link='/orders').data)   # already used
+        self.assertIn('code', post(code='Bad Code').data)
+        both = self.client.post('/api/menus/', {'name': 'X', 'is_header': True, 'is_sub_header': True},
+                                format='json')
+        self.assertIn('is_sub_header', both.data)
+
+    def test_system_menus_keep_their_structure(self):
         self.as_owner()
         branches = Menu.objects.get(code='branches')
-        admin_group = Menu.objects.get(code='administration')
         url = f'/api/menus/{branches.id}/'
-        # system menu: can rename, not delete, not change path or drop actions; code is fixed
-        self.assertEqual(self.client.patch(url, {'name': 'Shops'}, format='json').status_code, 200)
+        self.assertEqual(self.client.patch(url, {'name': 'Shops', 'icon': 'home', 'sort_order': 9},
+                                           format='json').status_code, 200)
+        self.assertEqual(Permission.objects.get(code='branches.view').description, 'View Shops')
         self.assertEqual(self.client.delete(url).status_code, 400)
-        self.assertEqual(self.client.patch(url, {'path': '/shops'}, format='json').status_code, 400)
-        self.assertEqual(self.client.patch(url, {'actions': ['view']}, format='json').status_code, 400)
+        self.assertEqual(self.client.patch(url, {'router_link': '/shops'}, format='json').status_code, 400)
+        self.assertEqual(self.client.patch(url, {'is_header': True}, format='json').status_code, 400)
         self.assertEqual(self.client.patch(url, {'code': 'shops'}, format='json').status_code, 400)
-        # no loops; a heading with menus under it can't be deleted; bad input rejected
-        self.assertEqual(self.client.patch(f'/api/menus/{admin_group.id}/', {'parent': str(branches.id)},
+
+    def test_no_loops_and_protected_parents(self):
+        self.as_owner()
+        top = make_menu('extras', header=True)
+        inner = make_menu('innerpage', parent=top)
+        self.assertEqual(self.client.patch(f'/api/menus/{top.id}/', {'parent': str(inner.id)},
                                            format='json').status_code, 400)
-        group = make_menu('extras', [], path='')
-        make_menu('notes', ['view'], parent=group)
-        self.assertEqual(self.client.delete(f'/api/menus/{group.id}/').status_code, 400)
-        bad = {'code': 'Bad Code', 'name': 'x', 'path': 'nope', 'actions': ['View All']}
-        errors = self.client.post('/api/menus/', bad, format='json').data
-        self.assertTrue({'code', 'path', 'actions'} <= set(errors))
+        self.assertEqual(self.client.delete(f'/api/menus/{top.id}/').status_code, 400)  # has a child
+        self.assertEqual(self.client.delete(f'/api/menus/{inner.id}/').status_code, 204)
 
     def test_my_menus_follow_token_permissions(self):
         self.make_user(roles=[(self.cashier, self.dxb)])
         self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
-        codes = [m['code'] for m in self.client.get('/api/menus/my/').data]
-        self.assertEqual(codes, ['orders'])  # cashier: orders.view only, no admin heading
+        menus = self.client.get('/api/menus/my/').data
+        self.assertEqual([m['code'] for m in menus], ['orders'])  # cashier: orders.view only
 
         self.client.post('/api/auth/login/', {'email': 'owner@shop.com', 'password': PASSWORD}, format='json')
-        codes = [m['code'] for m in self.client.get('/api/menus/my/').data]
-        self.assertIn('administration', codes)  # heading shown because menus under it are
+        menus = {m['code']: m for m in self.client.get('/api/menus/my/').data}
+        self.assertTrue(menus['administration']['is_header'])
+        codes = list(menus)
         self.assertLess(codes.index('administration'), codes.index('menus'))
+
+    def test_header_hidden_when_nothing_under_it_is_visible(self):
+        only_header = make_role('Header only', ['administration.view'])
+        self.make_user(roles=[(only_header, self.dxb)])
+        self.client.post('/api/auth/login/', {'email': 'staff@shop.com', 'password': PASSWORD}, format='json')
+        self.assertEqual(self.client.get('/api/menus/my/').data, [])
 
     def test_inactive_menu_hidden(self):
         Menu.objects.filter(code='orders').update(is_active=False)

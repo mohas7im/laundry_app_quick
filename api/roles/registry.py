@@ -1,35 +1,53 @@
 """
-Menus for the pages built into the app ("system menus").
+Built-in definitions written to the database by `roles.seed`
+(migration 0004, and `python manage.py sync_rbac` after you change this file).
 
-They are written to the `menus` table — with one `permissions` row per action —
-by `roles.seed.sync_system_menus` (migration 0003, and `python manage.py sync_rbac`
-after you add a page here). The owner can rename, re-icon and reorder them in the
-Menus page, but not delete them. Other menus are created in the app.
+- SYSTEM_ACTIONS: the permission grid's columns. Every menu gets one
+  permission per action, e.g. `orders.print`.
+- SYSTEM_MENUS: the pages built into the app. The owner can rename, re-icon and
+  reorder them in the Menus page, but not delete them or change their links.
 """
 
-CRUD = ['view', 'create', 'edit', 'delete']
+# code, name, sort order
+SYSTEM_ACTIONS = [
+    ('create', 'Create', 1),
+    ('edit', 'Edit', 2),
+    ('delete', 'Delete', 3),
+    ('view', 'View', 4),
+    ('print', 'Print', 5),
+]
 
-ACTION_LABELS = {
-    'view': 'View',
-    'create': 'Create',
-    'edit': 'Edit',
-    'delete': 'Delete',
-}
-
-# code, name, path, icon (lucide name), parent code, sort order, actions
 SYSTEM_MENUS = [
-    ('dashboard', 'Dashboard', '/', 'layout-dashboard', None, 0, ['view']),
-    ('administration', 'Administration', '', 'settings', None, 90, []),
-    ('branches', 'Branches', '/branches', 'building-2', 'administration', 1, CRUD),
-    ('roles', 'Roles & Permissions', '/roles', 'shield-check', 'administration', 2, CRUD),
-    ('users', 'Users', '/users', 'users', 'administration', 3, CRUD),
-    ('menus', 'Menus', '/menus', 'list-tree', 'administration', 4, CRUD),
+    {
+        'code': 'dashboard', 'name': 'Dashboard', 'icon': 'layout-dashboard', 'sort_order': 0,
+        'router_name': 'dashboard', 'router_link': '/',
+    },
+    {
+        'code': 'administration', 'name': 'Administration', 'icon': 'settings', 'sort_order': 90,
+        'is_header': True,
+    },
+    {
+        'code': 'branches', 'name': 'Branches', 'icon': 'building-2', 'sort_order': 1, 'parent': 'administration',
+        'router_name': 'branches', 'router_link': '/branches',
+    },
+    {
+        'code': 'roles', 'name': 'Roles', 'icon': 'shield-check', 'sort_order': 2,
+        'parent': 'administration', 'router_name': 'roles', 'router_link': '/roles',
+    },
+    {
+        'code': 'permissions', 'name': 'Permissions', 'icon': 'key-round', 'sort_order': 3,
+        'parent': 'administration', 'router_name': 'permissions', 'router_link': '/permissions',
+    },
+    {
+        'code': 'users', 'name': 'Users', 'icon': 'users', 'sort_order': 4, 'parent': 'administration',
+        'router_name': 'users', 'router_link': '/users',
+    },
+    {
+        'code': 'menus', 'name': 'Menus', 'icon': 'list-tree', 'sort_order': 5, 'parent': 'administration',
+        'router_name': 'menus', 'router_link': '/menus',
+    },
 ]
 
 
-def action_label(action):
-    return ACTION_LABELS.get(action, action.replace('_', ' ').capitalize())
-
-
-def permission_description(action, menu_name):
-    return f'{action_label(action)} {menu_name}'
+def permission_description(action_name, menu_name):
+    return f'{action_name} {menu_name}'

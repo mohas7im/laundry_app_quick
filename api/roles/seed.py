@@ -1,40 +1,65 @@
-"""Write roles/registry.py into the database. Safe to run any number of times."""
-from .registry import SYSTEM_MENUS, permission_description
+"""
+Write roles/registry.py into the database, and keep permissions in step with
+menus and actions. Safe to run any number of times.
+
+Model classes are passed in so migrations can use their historical models.
+"""
+from .registry import SYSTEM_ACTIONS, SYSTEM_MENUS, permission_description
 
 OWNER_ROLE = 'Owner'
 OWNER_DESCRIPTION = 'Business owner. Full access to every branch and setting.'
 
 
-def sync_menu_permissions(Permission, menu, actions):
-    """Make `menu`'s permissions exactly `actions` (removed actions are deleted, with their role grants)."""
-    Permission.objects.filter(menu=menu).exclude(action__in=actions).delete()
-    for action in actions:
+def sync_actions(Action):
+    for code, name, order in SYSTEM_ACTIONS:
+        Action.objects.update_or_create(code=code, defaults={'name': name, 'sort_order': order})
+
+
+def sync_menu_permissions(Permission, Action, menu):
+    """Every menu has exactly one permission per action."""
+    for action in Action.objects.all():
         Permission.objects.update_or_create(
             menu=menu, action=action,
-            defaults={'code': f'{menu.code}.{action}', 'description': permission_description(action, menu.name)},
+            defaults={'code': f'{menu.code}.{action.code}',
+                      'description': permission_description(action.name, menu.name)},
         )
 
 
-def sync_system_menus(Menu, Permission):
+def sync_system_menus(Menu, Permission, Action):
     """
-    Create missing system menus and make sure each has its actions.
-    Names, icons and order the owner changed are kept.
-    Model classes are passed in so migrations can use historical models.
+    Create missing system menus. Names, icons and order the owner changed are kept;
+    the structure the code relies on (header flags, links) is enforced.
     """
     by_code = {}
-    for code, name, path, icon, parent_code, order, actions in SYSTEM_MENUS:
+    for spec in SYSTEM_MENUS:
+        structure = {
+            'is_header': spec.get('is_header', False),
+            'is_sub_header': spec.get('is_sub_header', False),
+            'router_name': spec.get('router_name', ''),
+            'router_link': spec.get('router_link', ''),
+            'is_system': True,
+        }
         menu, created = Menu.objects.get_or_create(
-            code=code,
-            defaults={'name': name, 'path': path, 'icon': icon, 'sort_order': order,
-                      'parent': by_code.get(parent_code), 'is_system': True},
+            code=spec['code'],
+            defaults={**structure, 'name': spec['name'], 'icon': spec.get('icon', ''),
+                      'sort_order': spec.get('sort_order', 0), 'parent': by_code.get(spec.get('parent'))},
         )
-        if not created and (menu.path != path or not menu.is_system):
-            menu.path, menu.is_system = path, True  # the page's URL is fixed in code
-            menu.save(update_fields=['path', 'is_system'])
-        by_code[code] = menu
-        # system actions are added if missing; never removed here
-        existing = set(Permission.objects.filter(menu=menu).values_list('action', flat=True))
-        sync_menu_permissions(Permission, menu, sorted(existing | set(actions)) if existing else actions)
+        if not created:
+            for field, value in structure.items():
+                setattr(menu, field, value)
+            menu.save(update_fields=list(structure))
+        by_code[spec['code']] = menu
+        sync_menu_permissions(Permission, Action, menu)
+
+
+def sync_all(Menu, Permission, Action, Role=None, RolePermission=None):
+    """Actions, system menus, and a permission per action for every menu."""
+    sync_actions(Action)
+    sync_system_menus(Menu, Permission, Action)
+    for menu in Menu.objects.all():
+        sync_menu_permissions(Permission, Action, menu)
+    if Role is not None and Role.objects.filter(name=OWNER_ROLE, is_system_role=True).exists():
+        ensure_owner_role(Role, RolePermission, Permission)
 
 
 def ensure_owner_role(Role, RolePermission, Permission):
