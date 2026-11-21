@@ -133,7 +133,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
           <Field>
             <Button type="submit" size="xl">
               {pending && <Spinner data-icon="inline-start" />}
-              {pending ? "Logging in…" : "Log in"}
+              Log in
             </Button>
             <FieldDescription className="text-center">
               Forgot your password? Ask your shop owner to reset it.

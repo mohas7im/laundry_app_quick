@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -223,7 +224,8 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
             Cancel
           </Button>
           <Button type="submit" disabled={saving || noRoles}>
-            {saving ? "Saving…" : user ? "Save changes" : "Create user"}
+            {saving && <Spinner data-icon="inline-start" />}
+            {user ? "Save changes" : "Create user"}
           </Button>
         </DialogFooter>
       </FieldGroup>

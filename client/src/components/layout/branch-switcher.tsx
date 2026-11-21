@@ -1,6 +1,7 @@
-import { Building2Icon, CheckIcon, ChevronsUpDownIcon } from "lucide-react"
+import { Building2Icon, CheckIcon, ChevronDownIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,88 +10,64 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 
-/** Shows the active branch; lets users with several branches switch. */
+/** Top header: shows the active branch; users with several branches can switch. */
 export function BranchSwitcher() {
   const { user, activeBranch, selectBranch } = useAuth()
-  const { isMobile } = useSidebar()
   const branches = user?.branches ?? []
 
   if (!activeBranch) return null
 
-  const summary = (
+  const label = (
     <>
-      <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <Building2Icon className="size-4" />
-      </div>
-      <div className="grid flex-1 text-left text-sm leading-tight">
-        <span className="truncate font-medium">{activeBranch.name}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {activeBranch.roles.map((r) => r.name).join(", ") || "No role"} · {activeBranch.code}
-        </span>
-      </div>
+      <Building2Icon data-icon="inline-start" />
+      <span className="max-w-40 truncate">{activeBranch.name}</span>
     </>
   )
 
+  // one branch: nothing to switch to, just show where you're working
   if (branches.length < 2) {
     return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton size="lg" className="pointer-events-none">
-            {summary}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <Button variant="outline" size="sm" className="pointer-events-none" tabIndex={-1}>
+        {label}
+      </Button>
     )
   }
 
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />}
-          >
-            {summary}
-            <ChevronsUpDownIcon className="ml-auto size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="min-w-56"
-            side={isMobile ? "bottom" : "right"}
-            align="start"
-            sideOffset={4}
-          >
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Switch branch</DropdownMenuLabel>
-              {branches.map((branch) => (
-                <DropdownMenuItem
-                  key={branch.id}
-                  onClick={() =>
-                    selectBranch(branch.id).then(
-                      () => toast.success(`Switched to ${branch.name}`),
-                      (err) => toast.error(getApiErrorMessage(err, "Couldn't switch branch.")),
-                    )
-                  }
-                >
-                  <div className="grid flex-1 leading-tight">
-                    <span>{branch.name}</span>
-                    <span className="text-xs text-muted-foreground">{branch.roles.map((r) => r.name).join(", ")}</span>
-                  </div>
-                  {branch.id === activeBranch.id && <CheckIcon className="size-4" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="Switch branch" />}>
+        {label}
+        <ChevronDownIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="min-w-56" align="end" sideOffset={4}>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Switch branch</DropdownMenuLabel>
+          {branches.map((branch) => (
+            <DropdownMenuItem
+              key={branch.id}
+              onClick={() =>
+                selectBranch(branch.id).then(
+                  () => toast.success(`Switched to ${branch.name}`),
+                  (err) => toast.error(getApiErrorMessage(err, "Couldn't switch branch.")),
+                )
+              }
+            >
+              <div className="grid flex-1 leading-tight">
+                <span>
+                  {branch.name} <span className="text-muted-foreground">· {branch.code}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {branch.roles.map((r) => r.name).join(", ") || "No role"}
+                </span>
+              </div>
+              {branch.id === activeBranch.id && <CheckIcon className="size-4" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -98,7 +99,8 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
             Cancel
           </Button>
           <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : role ? "Save changes" : "Create role"}
+            {saving && <Spinner data-icon="inline-start" />}
+            {role ? "Save changes" : "Create role"}
           </Button>
         </DialogFooter>
       </FieldGroup>

@@ -128,7 +128,7 @@ function PermissionEditor({ role, saved, matrix }: { role: Role; saved: string[]
         </Field>
         <Button onClick={submit} disabled={!dirty || saving}>
           {saving && <Spinner data-icon="inline-start" />}
-          {saving ? "Saving…" : "Submit"}
+          Submit
         </Button>
       </div>
 

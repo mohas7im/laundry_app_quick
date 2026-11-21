@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { SelectField } from "@/components/select-field"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import {
   Field,
@@ -229,7 +230,8 @@ function MenuForm({ menu }: { menu?: Menu }) {
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : menu ? "Save changes" : "Create menu"}
+              {saving && <Spinner data-icon="inline-start" />}
+              {menu ? "Save changes" : "Create menu"}
             </Button>
           </CardFooter>
         </form>

@@ -3,6 +3,7 @@ import { toast } from "sonner"
 
 import { FormField } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -131,7 +132,8 @@ function CustomerForm({
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : customer ? "Save changes" : "Add customer"}
+          {saving && <Spinner data-icon="inline-start" />}
+          {customer ? "Save changes" : "Add customer"}
         </Button>
       </DialogFooter>
     </form>

@@ -2,7 +2,6 @@ import * as React from "react"
 import { Link } from "react-router"
 import { WashingMachineIcon } from "lucide-react"
 
-import { BranchSwitcher } from "@/components/layout/branch-switcher"
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
 import {
@@ -31,7 +30,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <BranchSwitcher />
       </SidebarHeader>
       <SidebarContent>
         <NavMain />

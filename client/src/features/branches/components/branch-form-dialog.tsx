@@ -3,6 +3,7 @@ import { toast } from "sonner"
 
 import { FormField } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -109,7 +110,8 @@ function BranchForm({ branch, onDone }: { branch?: Branch | null; onDone: () => 
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : branch ? "Save changes" : "Create branch"}
+          {saving && <Spinner data-icon="inline-start" />}
+          {branch ? "Save changes" : "Create branch"}
         </Button>
       </DialogFooter>
     </form>

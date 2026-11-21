@@ -23,7 +23,7 @@ export function App() {
       <AuthInit />
       <TooltipProvider>
         <RouterProvider router={router} />
-        <Toaster richColors position="top-right" />
+        <Toaster />
       </TooltipProvider>
     </Provider>
   )
