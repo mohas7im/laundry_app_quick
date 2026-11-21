@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { SelectField } from "@/components/select-field"
 import { Switch } from "@/components/ui/switch"
 import { useGetBranchesQuery } from "@/features/branches/api"
-import { useGetRolesQuery } from "@/features/roles/api"
+import { OWNER_ROLE, useGetRolesQuery } from "@/features/roles/api"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { useSaveStaffUserMutation, type StaffUser } from "../api"
@@ -67,8 +67,8 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
 
   const branchList = branches.data ?? []
   // Only an owner may give the Owner role.
-  const roleList = (roles.data ?? []).filter((r) => me?.is_owner || !(r.is_system_role && r.name === "Owner"))
-  const ownerRoleId = roles.data?.find((r) => r.is_system_role && r.name === "Owner")?.id
+  const roleList = (roles.data ?? []).filter((r) => me?.is_owner || r.name !== OWNER_ROLE)
+  const ownerRoleId = roles.data?.find((r) => r.name === OWNER_ROLE)?.id
   const noRoles = !roles.isLoading && !roleList.length
 
   const update = (key: number, patch: Partial<RoleRow>) =>

@@ -14,7 +14,6 @@ export interface PermissionMatrix {
     depth: number
     is_header: boolean
     is_sub_header: boolean
-    is_active: boolean
     permissions: Record<string, string>
   }[]
 }

@@ -7,7 +7,6 @@ import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataTableColumn } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { RowActionButtons } from "@/components/row-action-buttons"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
@@ -37,10 +36,8 @@ export function MenusPage() {
         cell: ({ row }) => {
           const m = row.original
           return (
-            <span className="flex items-center gap-2" style={{ paddingLeft: `${(m.depth ?? 0) * 1.25}rem` }}>
-              <span className="font-medium">{m.name}</span>
-              {m.is_system && <Badge variant="outline">Built-in</Badge>}
-              {!m.is_active && <Badge variant="secondary">Hidden</Badge>}
+            <span className="font-medium" style={{ paddingLeft: `${(m.depth ?? 0) * 1.25}rem` }}>
+              {m.name}
             </span>
           )
         },
@@ -84,7 +81,7 @@ export function MenusPage() {
           <RowActionButtons
             label={row.original.name}
             onEdit={canEdit ? () => navigate(`/menus/${row.original.id}/edit`) : undefined}
-            onDelete={canDelete && !row.original.is_system ? () => setDeleting(row.original) : undefined}
+            onDelete={canDelete ? () => setDeleting(row.original) : undefined}
           />
         ),
       },

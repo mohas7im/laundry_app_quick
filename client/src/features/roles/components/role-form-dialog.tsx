@@ -14,7 +14,7 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
-import { useSaveRoleMutation, type Role, type RoleInput } from "../api"
+import { OWNER_ROLE, useSaveRoleMutation, type Role, type RoleInput } from "../api"
 
 type Props = {
   open: boolean
@@ -43,8 +43,8 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
     e.preventDefault()
     setErrors({})
     try {
-      // Built-in roles keep their name.
-      const data = role?.is_system_role ? { description: values.description } : values
+      // The Owner role keeps its name.
+      const data = role?.name === OWNER_ROLE ? { description: values.description } : values
       const saved = await save({ id: role?.id, data }).unwrap()
       onDone()
       if (role) {
@@ -76,7 +76,7 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
             id="role-name"
             placeholder="e.g. Cashier"
             autoFocus
-            disabled={!!role?.is_system_role}
+            disabled={role?.name === OWNER_ROLE}
             value={values.name}
             aria-invalid={!!errors.name || undefined}
             onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}

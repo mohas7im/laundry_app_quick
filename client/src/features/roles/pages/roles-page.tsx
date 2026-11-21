@@ -7,11 +7,10 @@ import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataTableColumn } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { RowActionButtons } from "@/components/row-action-buttons"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
-import { useDeleteRoleMutation, useGetRolesQuery, type Role } from "../api"
+import { OWNER_ROLE, useDeleteRoleMutation, useGetRolesQuery, type Role } from "../api"
 import { RoleFormDialog } from "../components/role-form-dialog"
 
 const NO_ROLES: Role[] = []
@@ -35,10 +34,7 @@ export function RolesPage() {
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <span className="flex items-center gap-2">
-            <span className="font-medium">{row.original.name}</span>
-            {row.original.is_system_role && <Badge variant="outline">Built-in</Badge>}
-          </span>
+<span className="font-medium">{row.original.name}</span>
         ),
       },
       { accessorKey: "description", header: "Description", cell: ({ getValue }) => (getValue() as string) || "—" },
@@ -60,7 +56,7 @@ export function RolesPage() {
                   }
                 : undefined
             }
-            onDelete={canDelete && !row.original.is_system_role ? () => setDeleting(row.original) : undefined}
+            onDelete={canDelete && row.original.name !== OWNER_ROLE ? () => setDeleting(row.original) : undefined}
           />
         ),
       },

@@ -3,14 +3,21 @@ import { Link, useNavigate, useParams } from "react-router"
 import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import { PageHeader } from "@/components/page-header"
 import { SelectField } from "@/components/select-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { MENU_ICON_NAMES, menuIcon } from "@/lib/icons"
@@ -18,7 +25,6 @@ import { useGetMenuQuery, useGetMenusQuery, useSaveMenuMutation, type Menu, type
 
 const EMPTY: MenuInput = {
   name: "",
-  code: "",
   router_name: "",
   router_description: "",
   router_link: "",
@@ -27,7 +33,6 @@ const EMPTY: MenuInput = {
   is_header: false,
   is_sub_header: false,
   sort_order: 1,
-  is_active: true,
 }
 
 const ICON_OPTIONS = [
@@ -37,6 +42,21 @@ const ICON_OPTIONS = [
     return { value: name, label: <><Icon />{name}</> }
   }),
 ]
+
+/** One "Type" choice in the form; the API stores it as is_header / is_sub_header. */
+type MenuType = "page" | "header" | "sub_header"
+
+const TYPE_OPTIONS: { value: MenuType; label: string }[] = [
+  { value: "page", label: "Page" },
+  { value: "header", label: "Header" },
+  { value: "sub_header", label: "Sub-header" },
+]
+
+const TYPE_HINTS: Record<MenuType, string> = {
+  page: "Opens a page from the sidebar.",
+  header: "Section title for the menus under it.",
+  sub_header: "Collapsible group for the menus under it.",
+}
 
 /** /menus/new and /menus/:id/edit */
 export function MenuFormPage() {
@@ -55,14 +75,20 @@ function MenuForm({ menu }: { menu?: Menu }) {
   const [save, { isLoading: saving }] = useSaveMenuMutation()
   const menus = useGetMenusQuery()
   const { reload } = useAuth()
-  const system = !!menu?.is_system
 
-  const [values, setValues] = useState<MenuInput>(menu ? { ...EMPTY, ...menu } : EMPTY)
+  const [values, setValues] = useState<MenuInput>(() => {
+    if (!menu) return EMPTY
+    const { name, router_name, router_description, router_link, icon, parent, is_header, is_sub_header, sort_order } = menu
+    return { name, router_name, router_description, router_link, icon, parent, is_header, is_sub_header, sort_order }
+  })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const set = <K extends keyof MenuInput>(key: K, value: MenuInput[K]) => setValues((v) => ({ ...v, [key]: value }))
-  // Headers and sub-headers group other menus; their router fields are optional.
-  const isPage = !values.is_header && !values.is_sub_header
+
+  const type: MenuType = values.is_header ? "header" : values.is_sub_header ? "sub_header" : "page"
+  const setType = (t: MenuType) =>
+    setValues((v) => ({ ...v, is_header: t === "header", is_sub_header: t === "sub_header" }))
+  const isPage = type === "page"
 
   // Parent: any menu except this one and the menus under it (no loops).
   const below = new Set<string>(menu ? [menu.id] : [])
@@ -77,9 +103,10 @@ function MenuForm({ menu }: { menu?: Menu }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErrors({})
-    const { code, ...rest } = values
+    // headers and sub-headers don't open a page
+    const data = isPage ? values : { ...values, router_name: "", router_link: "", router_description: "" }
     try {
-      await save({ id: menu?.id, data: menu ? rest : { code, ...rest } }).unwrap()
+      await save({ id: menu?.id, data }).unwrap()
       await reload() // the owner gets the new permissions straight away
       toast.success(menu ? "Menu updated" : "Menu created")
       navigate("/menus")
@@ -90,83 +117,111 @@ function MenuForm({ menu }: { menu?: Menu }) {
     }
   }
 
-  return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <Button variant="ghost" size="sm" className="w-fit" render={<Link to="/menus" />}>
-        <ArrowLeftIcon data-icon="inline-start" />
-        Back
-      </Button>
+  const typeError = errors.is_header || errors.is_sub_header
 
-      <PageHeader
-        title={menu ? `Edit ${menu.name}` : "Create menu"}
-        description={
-          system
-            ? "Built-in menu: you can change its name, icon, parent, order and description."
-            : "Add a menu to the sidebar. It gets a permission for every action."
-        }
-      />
+  return (
+    <div className="flex max-w-3xl flex-col gap-4">
+      <div className="flex items-start gap-2">
+        <Button variant="ghost" size="icon-sm" aria-label="Back to menus" render={<Link to="/menus" />}>
+          <ArrowLeftIcon />
+        </Button>
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">{menu ? `Edit ${menu.name}` : "Create menu"}</h2>
+          <p className="text-sm text-muted-foreground">
+            {menu
+              ? "Change how this menu shows in the sidebar."
+              : "Add a menu to the sidebar. It gets a permission for every action."}
+          </p>
+        </div>
+      </div>
 
       <Card>
-        <form onSubmit={handleSubmit} noValidate>
+        {/* the card spaces its direct children; the form sits in between, so it repeats that spacing */}
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-(--card-spacing)">
           <CardContent>
             <FieldGroup>
-              <Row id="menu-name" label="Name" required error={errors.name}>
-                <Input id="menu-name" placeholder="e.g. Orders" autoFocus value={values.name}
-                  aria-invalid={!!errors.name || undefined} onChange={(e) => set("name", e.target.value)} />
-              </Row>
+              <FieldSet>
+                <FieldLegend>Details</FieldLegend>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field data-invalid={!!errors.name || undefined}>
+                    <FieldLabel htmlFor="menu-name">
+                      Name <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input id="menu-name" placeholder="e.g. Orders" autoFocus value={values.name}
+                      aria-invalid={!!errors.name || undefined} onChange={(e) => set("name", e.target.value)} />
+                    <FieldError>{errors.name}</FieldError>
+                  </Field>
 
-              <Row id="menu-code" label="Code" error={errors.code}
-                description={menu ? "Can't be changed: permission codes are built from it." : "Leave empty to make it from the name."}>
-                <Input id="menu-code" placeholder="e.g. orders" value={values.code} disabled={!!menu}
-                  aria-invalid={!!errors.code || undefined} onChange={(e) => set("code", e.target.value)} />
-              </Row>
+                  <Field data-invalid={!!typeError || undefined}>
+                    <FieldLabel htmlFor="menu-type">Type</FieldLabel>
+                    <SelectField id="menu-type" value={type} options={TYPE_OPTIONS}
+                      onValueChange={(v) => setType((v ?? "page") as MenuType)} />
+                    {typeError ? <FieldError>{typeError}</FieldError> : <FieldDescription>{TYPE_HINTS[type]}</FieldDescription>}
+                  </Field>
 
-              <Row id="menu-router" label="Router name" required={isPage} error={errors.router_name}>
-                <Input id="menu-router" placeholder="e.g. orders" value={values.router_name} disabled={system}
-                  aria-invalid={!!errors.router_name || undefined} onChange={(e) => set("router_name", e.target.value)} />
-              </Row>
+                  <Field data-invalid={!!errors.parent || undefined}>
+                    <FieldLabel htmlFor="menu-parent">Parent</FieldLabel>
+                    <SelectField id="menu-parent" value={values.parent} options={parentOptions}
+                      aria-invalid={!!errors.parent || undefined} onValueChange={(v) => set("parent", v)} />
+                    <FieldError>{errors.parent}</FieldError>
+                  </Field>
 
-              <Row id="menu-router-description" label="Router description" error={errors.router_description}>
-                <Input id="menu-router-description" placeholder="What this page is for" value={values.router_description}
-                  onChange={(e) => set("router_description", e.target.value)} />
-              </Row>
+                  <Field>
+                    <FieldLabel htmlFor="menu-icon">Icon</FieldLabel>
+                    <SelectField id="menu-icon" value={values.icon || null} options={ICON_OPTIONS}
+                      onValueChange={(v) => set("icon", v ?? "")} />
+                  </Field>
 
-              <Row id="menu-link" label="Router link" required={isPage} error={errors.router_link}
-                description="The page's path, e.g. /orders. Pages under it (/orders/new) belong to this menu.">
-                <Input id="menu-link" placeholder="/orders" value={values.router_link} disabled={system}
-                  aria-invalid={!!errors.router_link || undefined} onChange={(e) => set("router_link", e.target.value)} />
-              </Row>
+                  <Field>
+                    <FieldLabel htmlFor="menu-sequence">Sequence</FieldLabel>
+                    <Input id="menu-sequence" type="number" min={0} value={values.sort_order}
+                      onChange={(e) => set("sort_order", Math.max(0, Number(e.target.value) || 0))} />
+                    <FieldDescription>Lower numbers come first.</FieldDescription>
+                  </Field>
+                </div>
+              </FieldSet>
 
-              <Row id="menu-icon" label="Icon">
-                <SelectField id="menu-icon" value={values.icon || null} options={ICON_OPTIONS}
-                  onValueChange={(v) => set("icon", v ?? "")} />
-              </Row>
+              {isPage && (
+                <>
+                  <FieldSeparator />
+                  <FieldSet>
+                    <FieldLegend>Route</FieldLegend>
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <Field data-invalid={!!errors.router_name || undefined}>
+                        <FieldLabel htmlFor="menu-router">
+                          Router name <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Input id="menu-router" placeholder="e.g. orders" value={values.router_name}
+                          aria-invalid={!!errors.router_name || undefined}
+                          onChange={(e) => set("router_name", e.target.value)} />
+                        <FieldError>{errors.router_name}</FieldError>
+                      </Field>
 
-              <Row id="menu-parent" label="Parent" error={errors.parent}>
-                <SelectField id="menu-parent" value={values.parent} options={parentOptions}
-                  aria-invalid={!!errors.parent || undefined} onValueChange={(v) => set("parent", v)} />
-              </Row>
+                      <Field data-invalid={!!errors.router_link || undefined}>
+                        <FieldLabel htmlFor="menu-link">
+                          Router link <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Input id="menu-link" placeholder="/orders" value={values.router_link}
+                          aria-invalid={!!errors.router_link || undefined}
+                          onChange={(e) => set("router_link", e.target.value)} />
+                        {errors.router_link ? (
+                          <FieldError>{errors.router_link}</FieldError>
+                        ) : (
+                          <FieldDescription>Pages under it, like /orders/new, belong to this menu.</FieldDescription>
+                        )}
+                      </Field>
 
-              <Row id="menu-header" label="Is header" error={errors.is_header}
-                description="Section title in the sidebar for the menus under it.">
-                <YesNo id="menu-header" value={values.is_header} disabled={system}
-                  onChange={(v) => setValues((s) => ({ ...s, is_header: v, is_sub_header: v ? false : s.is_sub_header }))} />
-              </Row>
-
-              <Row id="menu-sub-header" label="Is sub-header" error={errors.is_sub_header}
-                description="Collapsible submenu for the menus under it.">
-                <YesNo id="menu-sub-header" value={values.is_sub_header} disabled={system}
-                  onChange={(v) => setValues((s) => ({ ...s, is_sub_header: v, is_header: v ? false : s.is_header }))} />
-              </Row>
-
-              <Row id="menu-sequence" label="Sequence" description="Lower numbers come first.">
-                <Input id="menu-sequence" type="number" min={0} value={values.sort_order}
-                  onChange={(e) => set("sort_order", Math.max(0, Number(e.target.value) || 0))} />
-              </Row>
-
-              <Row id="menu-active" label="Show in sidebar">
-                <Switch id="menu-active" checked={values.is_active} onCheckedChange={(v) => set("is_active", v)} />
-              </Row>
+                      <Field data-invalid={!!errors.router_description || undefined} className="sm:col-span-2">
+                        <FieldLabel htmlFor="menu-router-description">Router description</FieldLabel>
+                        <Input id="menu-router-description" placeholder="What this page is for"
+                          value={values.router_description}
+                          onChange={(e) => set("router_description", e.target.value)} />
+                        <FieldError>{errors.router_description}</FieldError>
+                      </Field>
+                    </div>
+                  </FieldSet>
+                </>
+              )}
             </FieldGroup>
           </CardContent>
           <CardFooter className="justify-end gap-2 border-t">
@@ -180,67 +235,5 @@ function MenuForm({ menu }: { menu?: Menu }) {
         </form>
       </Card>
     </div>
-  )
-}
-
-/**
- * Label + help/error in a fixed left column, control in an even right column
- * (stacks on narrow screens), so every control lines up at the same width.
- */
-function Row({
-  id,
-  label,
-  required,
-  description,
-  error,
-  children,
-}: {
-  id: string
-  label: string
-  required?: boolean
-  description?: string
-  error?: string
-  children: React.ReactNode
-}) {
-  return (
-    <Field
-      data-invalid={!!error || undefined}
-      className="grid gap-2 @md/field-group:grid-cols-[13rem_minmax(0,22rem)] @md/field-group:items-start @md/field-group:gap-6"
-    >
-      <FieldContent>
-        <FieldLabel htmlFor={id}>
-          {label}
-          {required && <span className="text-destructive">*</span>}
-        </FieldLabel>
-        {description && <FieldDescription>{description}</FieldDescription>}
-        {error && <FieldError>{error}</FieldError>}
-      </FieldContent>
-      <div>{children}</div>
-    </Field>
-  )
-}
-
-function YesNo({
-  id,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string
-  value: boolean
-  disabled?: boolean
-  onChange: (value: boolean) => void
-}) {
-  return (
-    <SelectField
-      id={id}
-      value={value ? "yes" : "no"}
-      disabled={disabled}
-      onValueChange={(v) => onChange(v === "yes")}
-      options={[
-        { value: "no", label: "No" },
-        { value: "yes", label: "Yes" },
-      ]}
-    />
   )
 }

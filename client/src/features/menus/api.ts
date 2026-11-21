@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth/use-auth"
 export interface Menu {
   id: string
   name: string
+  /** Made from the name on create; permission codes use it (e.g. orders.view). */
   code: string
   router_name: string
   router_description: string
@@ -19,14 +20,11 @@ export interface Menu {
   is_sub_header: boolean
   /** "Sequence": lower comes first. */
   sort_order: number
-  is_active: boolean
-  /** Built-in page: name, icon, parent and order can change; structure can't. */
-  is_system: boolean
   depth?: number
   created_at: string
 }
 
-export type MenuInput = Omit<Menu, "id" | "is_system" | "depth" | "created_at">
+export type MenuInput = Omit<Menu, "id" | "code" | "depth" | "created_at">
 
 /** GET /api/menus/my/ — the sidebar for the current user, in display order. */
 export interface MyMenu {

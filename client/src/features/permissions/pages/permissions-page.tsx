@@ -16,7 +16,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
-import { useGetRolesQuery, type Role } from "@/features/roles/api"
+import { OWNER_ROLE, useGetRolesQuery, type Role } from "@/features/roles/api"
 import { useGetPermissionMatrixQuery, useGetRolePermissionsQuery, useSaveRolePermissionsMutation, type PermissionMatrix } from "../api"
 
 /** /permissions (first role) and /permissions/:roleId — the Permissions menu. */
@@ -74,7 +74,7 @@ function PermissionEditor({ role, saved, matrix }: { role: Role; saved: string[]
   const [selected, setSelected] = useState(() => new Set(saved))
   const [search, setSearch] = useState("")
 
-  const isOwnerRole = role.is_system_role && role.name === "Owner"
+  const isOwnerRole = role.name === OWNER_ROLE
   const readOnly = isOwnerRole || !can("permissions.edit")
   const allCodes = useMemo(() => matrix.menus.flatMap((m) => Object.values(m.permissions)), [matrix])
   const checked = isOwnerRole ? new Set(allCodes) : selected
@@ -194,7 +194,6 @@ function PermissionEditor({ role, saved, matrix }: { role: Role; saved: string[]
                     <TableCell style={indent}>
                       <HeaderCheck
                         label={row.name}
-                        muted={!row.is_active}
                         {...state(codes)}
                         disabled={readOnly}
                         onChange={(on) => toggle(codes, on)}
@@ -242,18 +241,16 @@ function HeaderCheck({
   checked,
   indeterminate,
   disabled,
-  muted,
   onChange,
 }: {
   label: string
   checked: boolean
   indeterminate: boolean
   disabled?: boolean
-  muted?: boolean
   onChange: (on: boolean) => void
 }) {
   return (
-    <label className={`flex w-fit items-center gap-2 ${muted ? "text-muted-foreground" : "font-medium"}`}>
+    <label className="flex w-fit items-center gap-2 font-medium">
       <Checkbox
         checked={checked}
         indeterminate={indeterminate}
