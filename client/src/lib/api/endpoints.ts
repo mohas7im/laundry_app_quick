@@ -2,7 +2,8 @@
 // Django URLs end with a trailing slash — keep it, or Django will 404/redirect.
 //
 //   auth   → /api/auth/*   session management (JWT in HttpOnly cookies)
-//   owner  → branches, roles, permissions, users (owner account only)
+//   admin  → branches, roles, permissions, users, menus
+//   branch → customers (counter work, permissions of the active branch)
 
 type Id = string | number
 
@@ -31,4 +32,5 @@ export const ENDPOINTS = {
   },
   menus: { ...crud("/api/menus"), my: "/api/menus/my/" },
   users: crud("/api/users"),
+  customers: crud("/api/customers"),
 } as const

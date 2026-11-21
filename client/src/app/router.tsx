@@ -4,6 +4,7 @@ import { RequireAuth, RequireGuest, RequirePermission } from "@/components/auth/
 import { AppLayout } from "@/components/layout/app-layout"
 import { LoginPage } from "@/features/auth/pages/login-page"
 import { BranchesPage } from "@/features/branches/pages/branches-page"
+import { CustomersPage } from "@/features/customers/pages/customers-page"
 import { DashboardPage } from "@/features/dashboard/pages/dashboard-page"
 import { MenuFormPage } from "@/features/menus/pages/menu-form-page"
 import { MenusPage } from "@/features/menus/pages/menus-page"
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          {
+            element: <RequirePermission permission="customers.view" />,
+            children: [{ path: "customers", element: <CustomersPage /> }],
+          },
           {
             element: <RequirePermission permission="branches.view" />,
             children: [{ path: "branches", element: <BranchesPage /> }],
