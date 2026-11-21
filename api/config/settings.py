@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'corsheaders',
     # local
     'accounts',
+    'branches',
+    'roles',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'

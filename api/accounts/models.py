@@ -16,23 +16,21 @@ class UserManager(BaseUserManager):
         return user
 
     def create_owner(self, email, password=None, **extra_fields):
-        extra_fields['role'] = User.Role.OWNER
+        extra_fields['is_owner'] = True
         return self.create_user(email, password, **extra_fields)
 
 
 class User(AbstractBaseUser):
-    """Shop staff account. Access is controlled only by `role`."""
-
-    class Role(models.TextChoices):
-        OWNER = 'owner', 'Owner'
-        MANAGER = 'manager', 'Manager'
-        STAFF = 'staff', 'Staff'
+    """
+    A login account.
+    - Owner: full access to every branch; manages branches, roles and users.
+    - Staff: access only to the branches in their memberships, with that branch's role.
+    """
 
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=30, blank=True)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
-
+    is_owner = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
 
@@ -47,7 +45,3 @@ class User(AbstractBaseUser):
 
     def __str__(self):
         return f'{self.full_name} <{self.email}>'
-
-    @property
-    def is_owner(self):
-        return self.role == self.Role.OWNER
