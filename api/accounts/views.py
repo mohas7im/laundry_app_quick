@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.models import update_last_login
 from django.middleware.csrf import get_token
-from rest_framework import permissions, status, viewsets
+from rest_framework import exceptions, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
@@ -9,7 +9,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .access import IsOwner, accessible_branches
+from .access import get_access, org_permission
 from .cookies import clear_auth_cookies, set_auth_cookies
 from .models import User
 from .serializers import (
@@ -18,16 +18,18 @@ from .serializers import (
     MeSerializer,
     StaffUserSerializer,
     SwitchBranchSerializer,
+    is_owner_user,
+    other_active_owner_exists,
 )
 from .tokens import build_tokens, revoke_all_sessions
 
 
-def _auth_response(request, user, refresh, access, branch, status_code=status.HTTP_200_OK):
+def _auth_response(request, user, refresh, access_token, access, active):
     """Body = current user (with active branch); cookies = the new token pair."""
     get_token(request)  # make sure the csrftoken cookie is set/rotated
-    data = MeSerializer(user, context={'active_branch_id': branch.id if branch else None}).data
-    response = Response({'user': data}, status=status_code)
-    return set_auth_cookies(response, access, refresh)
+    context = {'access': access, 'active_branch_id': active.branch.id if active else None}
+    response = Response({'user': MeSerializer(user, context=context).data})
+    return set_auth_cookies(response, access_token, refresh)
 
 
 def _token_branch_id(request):
@@ -68,15 +70,15 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
 
-        refresh, access, branch = build_tokens(user, serializer.validated_data.get('branch_id'))
+        tokens = build_tokens(user, serializer.validated_data.get('branch_id'))
         update_last_login(None, user)
-        return _auth_response(request, user, refresh, access, branch)
+        return _auth_response(request, user, *tokens)
 
 
 class RefreshView(APIView):
     """
     Rotate the refresh token and re-issue the access token with claims recomputed
-    from the database, so role/permission/branch changes apply within 15 minutes.
+    from the RBAC tables, so role/permission/branch changes apply within 15 minutes.
     """
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
@@ -96,10 +98,13 @@ class RefreshView(APIView):
             return self._reject()
 
         old.blacklist()
-        refresh, access, branch = build_tokens(user, old.get('active_branch_id'))
+        refresh, access_token, _, active = build_tokens(user, old.get('active_branch_id'))
         get_token(request)
-        response = Response({'detail': 'Token refreshed.', 'active_branch_id': branch.id if branch else None})
-        return set_auth_cookies(response, access, refresh)
+        response = Response({
+            'detail': 'Token refreshed.',
+            'active_branch_id': str(active.branch.id) if active else None,
+        })
+        return set_auth_cookies(response, access_token, refresh)
 
     @staticmethod
     def _reject():
@@ -116,12 +121,12 @@ class SwitchBranchView(APIView):
         serializer.is_valid(raise_exception=True)
         branch_id = serializer.validated_data['branch_id']
 
-        if not any(b.id == branch_id for b in accessible_branches(request.user)):
+        if get_access(request.user).branch(branch_id) is None:
             return Response({'detail': 'You do not have access to this branch.'}, status=status.HTTP_403_FORBIDDEN)
 
         _blacklist_cookie_refresh(request)
-        refresh, access, branch = build_tokens(request.user, branch_id)
-        return _auth_response(request, request.user, refresh, access, branch)
+        tokens = build_tokens(request.user, branch_id)
+        return _auth_response(request, request.user, *tokens)
 
 
 class LogoutView(APIView):
@@ -135,7 +140,7 @@ class LogoutView(APIView):
 
 
 class MeView(APIView):
-    """The logged-in user, the branches they can switch to, and the active one (from the token)."""
+    """The logged-in user, their roles/permissions, branches, and the active one (from the token)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -155,29 +160,43 @@ class ChangePasswordView(APIView):
 
         # Log out other devices, then issue a fresh pair for this session (same branch).
         revoke_all_sessions(request.user)
-        refresh, access, _ = build_tokens(request.user, _token_branch_id(request))
+        refresh, access_token, _, _ = build_tokens(request.user, _token_branch_id(request))
         response = Response({'detail': 'Password changed.'})
-        return set_auth_cookies(response, access, refresh)
+        return set_auth_cookies(response, access_token, refresh)
 
 
 class StaffUserViewSet(viewsets.ModelViewSet):
-    """Owner manages staff accounts. Owner accounts are not listed or editable here."""
+    """Users with `users.manage` manage accounts. Only owners may change an owner's account."""
     serializer_class = StaffUserSerializer
-    permission_classes = [IsOwner]
+    permission_classes = [org_permission('users.manage')]
 
     def get_queryset(self):
-        return (
-            User.objects.filter(is_owner=False)
-            .prefetch_related('memberships__branch', 'memberships__role')
-        )
+        return User.objects.prefetch_related('user_roles__role', 'user_roles__branch')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if not hasattr(self.request, '_access'):
+            self.request._access = get_access(self.request.user)
+        context['actor_is_owner'] = self.request._access.is_owner
+        return context
+
+    def _guard_owner_target(self, target):
+        if is_owner_user(target) and not self.request._access.is_owner:
+            raise exceptions.PermissionDenied('Only an owner can change an owner account.')
 
     def perform_update(self, serializer):
+        self._guard_owner_target(serializer.instance)
         was_active = serializer.instance.is_active
         user = serializer.save()
-        # Deactivated or password reset by the owner → end their sessions.
+        # Deactivated or password reset → end their sessions.
         if (was_active and not user.is_active) or serializer.validated_data.get('password'):
             revoke_all_sessions(user)
 
     def perform_destroy(self, instance):
+        if instance.pk == self.request.user.pk:
+            raise exceptions.ValidationError({'detail': "You can't delete your own account."})
+        self._guard_owner_target(instance)
+        if is_owner_user(instance) and not other_active_owner_exists(instance):
+            raise exceptions.ValidationError({'detail': 'This is the only active owner. Add another owner first.'})
         revoke_all_sessions(instance)
         instance.delete()

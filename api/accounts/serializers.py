@@ -4,9 +4,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
-from branches.models import Branch, BranchMembership
-from roles.models import Role
-from .access import accessible_branches
+from branches.models import Branch, UserBranchAssignment
+from roles.models import OWNER_ROLE, Role, UserRole
+from .access import get_access
 from .models import User
 
 
@@ -14,31 +14,50 @@ from .models import User
 
 class MeSerializer(serializers.ModelSerializer):
     """
-    Pass context={'active_branch_id': ...} — the branch in the user's current access token.
-    `branches` lists every branch the user may switch to.
+    Context: 'access' (from get_access) and 'active_branch_id' (from the token).
+    `roles`/`permissions` are organization-wide; each branch lists what applies there.
     """
-    branches = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
+    roles = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
     active_branch_id = serializers.SerializerMethodField()
+    branches = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'is_owner', 'active_branch_id', 'branches',
-                  'date_joined', 'last_login']
+        fields = ['id', 'email', 'full_name', 'phone', 'is_owner', 'roles', 'permissions',
+                  'active_branch_id', 'branches', 'date_joined', 'last_login']
         read_only_fields = fields
 
+    def _access(self, user):
+        if 'access' not in self.context:
+            self.context['access'] = get_access(user)
+        return self.context['access']
+
+    def get_is_owner(self, user):
+        return self._access(user).is_owner
+
+    def get_roles(self, user):
+        return sorted({r.name for r in self._access(user).org_roles})
+
+    def get_permissions(self, user):
+        return sorted(self._access(user).org_permissions)
+
     def get_active_branch_id(self, user):
-        return self.context.get('active_branch_id')
+        value = self.context.get('active_branch_id')
+        return str(value) if value else None
 
     def get_branches(self, user):
         return [
             {
-                'id': b.id,
-                'name': b.name,
-                'code': b.code,
-                'role': {'id': b.role.id, 'name': b.role.name} if b.role else None,
-                'permissions': sorted(b.permission_set),
+                'id': str(b.branch.id),
+                'name': b.branch.name,
+                'code': b.branch.code,
+                'roles': sorted(({'id': str(r.id), 'name': r.name} for r in {r.id: r for r in b.roles}.values()),
+                                key=lambda r: r['name']),
+                'permissions': sorted(b.permissions),
             }
-            for b in accessible_branches(user)
+            for b in self._access(user).branches
         ]
 
 
@@ -46,7 +65,7 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     # Optional: the branch used last time on this device. Ignored if no longer accessible.
-    branch_id = serializers.IntegerField(required=False, allow_null=True)
+    branch_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs):
         user = authenticate(
@@ -61,7 +80,7 @@ class LoginSerializer(serializers.Serializer):
 
 
 class SwitchBranchSerializer(serializers.Serializer):
-    branch_id = serializers.IntegerField()
+    branch_id = serializers.UUIDField()
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -81,31 +100,48 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
-# ── Staff management (owner only) ───────────────────────────────────────────
+# ── User management (users.manage) ──────────────────────────────────────────
 
-class MembershipSerializer(serializers.ModelSerializer):
-    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
+def is_owner_user(user):
+    return UserRole.objects.filter(user=user, branch__isnull=True, role__name=OWNER_ROLE,
+                                   role__is_system_role=True).exists()
+
+
+def other_active_owner_exists(user):
+    return UserRole.objects.filter(
+        branch__isnull=True, role__name=OWNER_ROLE, role__is_system_role=True, user__is_active=True,
+    ).exclude(user=user).exists()
+
+
+class UserRoleSerializer(serializers.ModelSerializer):
     role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all())
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all(), allow_null=True, required=False)
     role_name = serializers.CharField(source='role.name', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True, default=None)
 
     class Meta:
-        model = BranchMembership
-        fields = ['id', 'branch', 'branch_name', 'role', 'role_name']
-        read_only_fields = ['id', 'branch_name', 'role_name']
+        model = UserRole
+        fields = ['id', 'role', 'role_name', 'branch', 'branch_name']
+        read_only_fields = ['id', 'role_name', 'branch_name']
 
 
 class StaffUserSerializer(serializers.ModelSerializer):
-    """Create/edit staff users with their branch + role assignments."""
-
-    memberships = MembershipSerializer(many=True)
+    """
+    Create/edit users with their roles. Each role is organization-wide (branch = null)
+    or for one branch. Branch assignments are derived from the branch roles.
+    """
+    roles = UserRoleSerializer(many=True, source='user_roles')
     password = serializers.CharField(write_only=True, required=False, trim_whitespace=False)
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'password',
-                  'memberships', 'date_joined', 'last_login']
-        read_only_fields = ['id', 'date_joined', 'last_login']
+        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'password', 'is_owner', 'roles',
+                  'date_joined', 'last_login']
+        read_only_fields = ['id', 'is_owner', 'date_joined', 'last_login']
+
+    def get_is_owner(self, user):
+        return any(ur.branch_id is None and ur.role.is_owner_role for ur in user.user_roles.all())
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -116,12 +152,19 @@ class StaffUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('A user with this email already exists.')
         return value
 
-    def validate_memberships(self, value):
+    def validate_roles(self, value):
         if not value:
-            raise serializers.ValidationError('Assign at least one branch and role.')
-        branch_ids = [m['branch'].id for m in value]
-        if len(branch_ids) != len(set(branch_ids)):
-            raise serializers.ValidationError('Each branch can only be assigned once.')
+            raise serializers.ValidationError('Give the user at least one role.')
+        seen = set()
+        for item in value:
+            key = (item['role'].id, item.get('branch') and item['branch'].id)
+            if key in seen:
+                raise serializers.ValidationError('The same role is listed twice for the same branch.')
+            seen.add(key)
+            if item['role'].is_owner_role and item.get('branch'):
+                raise serializers.ValidationError('The Owner role applies to all branches; leave the branch empty.')
+        if any(i['role'].is_owner_role for i in value) and not self.context.get('actor_is_owner'):
+            raise serializers.ValidationError('Only an owner can give the Owner role.')
         return value
 
     def validate(self, attrs):
@@ -134,34 +177,51 @@ class StaffUserSerializer(serializers.ModelSerializer):
                 validate_password(password, probe)
             except DjangoValidationError as e:
                 raise serializers.ValidationError({'password': list(e.messages)})
+
+        # Never leave the business without an active owner.
+        if self.instance is not None and is_owner_user(self.instance) and not other_active_owner_exists(self.instance):
+            roles = attrs.get('user_roles')
+            loses_owner = roles is not None and not any(
+                i['role'].is_owner_role and not i.get('branch') for i in roles
+            )
+            if loses_owner or attrs.get('is_active') is False:
+                raise serializers.ValidationError(
+                    {'detail': 'This is the only active owner. Add another owner first.'}
+                )
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        memberships = validated_data.pop('memberships')
+        roles = validated_data.pop('user_roles')
         password = validated_data.pop('password')
         user = User.objects.create_user(password=password, **validated_data)
-        self._save_memberships(user, memberships)
+        self._save_roles(user, roles)
         return user
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        memberships = validated_data.pop('memberships', None)
+        roles = validated_data.pop('user_roles', None)
         password = validated_data.pop('password', None)
-
-        for field, value in validated_data.items():
-            setattr(instance, field, value)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
-
-        if memberships is not None:
-            instance.memberships.all().delete()
-            self._save_memberships(instance, memberships)
+        if roles is not None:
+            self._save_roles(instance, roles)
         return instance
 
     @staticmethod
-    def _save_memberships(user, memberships):
-        BranchMembership.objects.bulk_create(
-            BranchMembership(user=user, branch=m['branch'], role=m['role']) for m in memberships
+    def _save_roles(user, roles):
+        """Replace the user's roles; keep branch assignments in step with the branch roles."""
+        branch_ids = {i['branch'].id for i in roles if i.get('branch')}
+
+        UserRole.objects.filter(user=user).delete()
+        UserBranchAssignment.objects.filter(user=user).exclude(branch_id__in=branch_ids).delete()
+        existing = set(UserBranchAssignment.objects.filter(user=user).values_list('branch_id', flat=True))
+        UserBranchAssignment.objects.bulk_create(
+            UserBranchAssignment(user=user, branch_id=b) for b in branch_ids - existing
+        )
+        UserRole.objects.bulk_create(
+            UserRole(user=user, role=i['role'], branch=i.get('branch')) for i in roles
         )

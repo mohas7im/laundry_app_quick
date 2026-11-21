@@ -12,7 +12,7 @@ class BranchSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user_count', 'created_at', 'updated_at']
 
     def get_user_count(self, obj):
-        return obj.memberships.count()
+        return obj.assignments.count()
 
     def validate_name(self, value):
         value = value.strip()

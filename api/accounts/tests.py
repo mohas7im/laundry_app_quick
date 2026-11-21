@@ -99,7 +99,7 @@ class AuthFlowTests(APITestCase):
         from django.core.management import call_command
         call_command('create_owner', email='Boss@Shop.com', name='Boss', password='Owner-pass-123', stdout=StringIO())
         owner = User.objects.get(email='boss@shop.com')
-        self.assertTrue(owner.is_owner)
+        self.assertTrue(owner.user_roles.filter(role__name='Owner', branch__isnull=True).exists())
         self.assertTrue(owner.check_password('Owner-pass-123'))
         self.assertFalse(hasattr(owner, 'is_superuser'))
 

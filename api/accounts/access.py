@@ -1,41 +1,82 @@
 """
-Access control.
+Access control, from the RBAC tables:
 
-The active branch, role and permissions are claims in the access token
-(see accounts/tokens.py), so permission checks need no database query:
+    users ─< user_roles >─ roles ─< role_permissions >─ permissions
+                 │ branch_id NULL = organization-wide, else that branch only
+    users ─< user_branch_assignments >─ branches
 
-- IsOwner                            → owner-only endpoints (branches, roles, users)
-- branch_permission('orders.create') → token must contain that permission
+- get_access(user)                   → the user's branches, roles and permissions (DB)
+- org_permission('users.manage')     → permission class for organization-level actions (DB)
+- branch_permission('orders.create') → permission class for branch work (access-token claims)
 - get_active_branch_id(request)      → branch id from the token, for filtering data
-- get_active_branch(request)         → the Branch object (one query), when you need its fields
 """
+from dataclasses import dataclass, field
+
 from rest_framework import exceptions, permissions
 
-from branches.models import Branch, BranchMembership
+from branches.models import Branch
+from roles.models import Permission, RolePermission, UserRole
 from roles.registry import ALL_PERMISSIONS
 
 
-def accessible_branches(user):
-    """Active branches the user can work in, each annotated with `.role` and `.permission_set`."""
-    if user.is_owner:
-        branches = list(Branch.objects.filter(is_active=True))
-        for branch in branches:
-            branch.role = None
-            branch.permission_set = ALL_PERMISSIONS
-        return branches
+@dataclass
+class BranchAccess:
+    branch: Branch
+    roles: list          # Role objects that apply here (org-wide + this branch)
+    permissions: frozenset
 
-    memberships = (
-        BranchMembership.objects
-        .filter(user=user, branch__is_active=True)
-        .select_related('branch', 'role')
-    )
-    branches = []
-    for m in memberships:
-        branch = m.branch
-        branch.role = m.role
-        branch.permission_set = frozenset(m.role.permissions)
-        branches.append(branch)
-    return branches
+
+@dataclass
+class Access:
+    is_owner: bool
+    org_roles: list                      # organization-wide Role objects
+    org_permissions: frozenset           # from organization-wide roles
+    branches: list = field(default_factory=list)  # [BranchAccess], active branches only
+
+    def branch(self, branch_id):
+        return next((b for b in self.branches if str(b.branch.id) == str(branch_id)), None)
+
+
+def get_access(user):
+    """Everything the user may do, per branch. ~3 queries."""
+    rows = list(UserRole.objects.filter(user=user).select_related('role', 'branch'))
+    role_ids = {r.role_id for r in rows}
+
+    perms_by_role = {}
+    for role_id, code in RolePermission.objects.filter(role_id__in=role_ids).values_list(
+        'role_id', 'permission__code'
+    ):
+        perms_by_role.setdefault(role_id, set()).add(code)
+
+    org_roles = [r.role for r in rows if r.branch_id is None]
+    is_owner = any(role.is_owner_role for role in org_roles)
+    every_permission = frozenset(Permission.objects.values_list('code', flat=True)) if is_owner else None
+
+    def union(roles):
+        if is_owner:
+            return every_permission
+        return frozenset().union(*(perms_by_role.get(role.id, ()) for role in roles))
+
+    org_permissions = union(org_roles)
+
+    branch_roles = {}
+    for r in rows:
+        if r.branch_id is not None:
+            branch_roles.setdefault(r.branch_id, []).append(r.role)
+
+    # Organization-wide roles apply in every branch; otherwise only assigned branches.
+    if org_roles:
+        branches = Branch.objects.filter(is_active=True)
+    else:
+        branches = Branch.objects.filter(is_active=True, assignments__user=user)
+
+    branch_access = []
+    for branch in branches:
+        roles = org_roles + branch_roles.get(branch.id, [])
+        branch_access.append(BranchAccess(branch=branch, roles=roles, permissions=union(roles)))
+
+    return Access(is_owner=is_owner, org_roles=org_roles, org_permissions=org_permissions,
+                  branches=branch_access)
 
 
 def _claims(request):
@@ -63,23 +104,37 @@ def get_active_branch(request):
     return request._active_branch
 
 
-def token_permissions(request):
-    return frozenset(_claims(request).get('permissions', ()))
-
-
-class IsOwner(permissions.BasePermission):
-    message = 'Only the owner can do this.'
-
-    def has_permission(self, request, view):
-        # Read from the user row, not the token: owner status is too powerful to trust a stale claim.
-        return bool(request.user and request.user.is_authenticated and request.user.is_owner)
-
-
-def branch_permission(*codes):
-    """Permission class: the access token must contain ALL `codes` for the active branch."""
+def _check_codes(codes):
     unknown = set(codes) - ALL_PERMISSIONS
     if unknown:
         raise ValueError(f'Unknown permission codes: {unknown}')
+
+
+def org_permission(*codes):
+    """
+    Permission class for organization-level actions (branches, roles, users).
+    Checked against the database, not the token: these are too powerful to trust a stale claim.
+    Only organization-wide roles count.
+    """
+    _check_codes(codes)
+
+    class HasOrgPermission(permissions.BasePermission):
+        message = 'You do not have permission to do this.'
+
+        def has_permission(self, request, view):
+            if not (request.user and request.user.is_authenticated):
+                return False
+            if not hasattr(request, '_access'):
+                request._access = get_access(request.user)
+            return set(codes) <= request._access.org_permissions
+
+    HasOrgPermission.__name__ = f'HasOrgPermission({", ".join(codes)})'
+    return HasOrgPermission
+
+
+def branch_permission(*codes):
+    """Permission class for branch work: the access token must contain ALL `codes`."""
+    _check_codes(codes)
 
     class HasBranchPermission(permissions.BasePermission):
         message = 'You do not have permission to do this in this branch.'
@@ -88,7 +143,7 @@ def branch_permission(*codes):
             if not (request.user and request.user.is_authenticated):
                 return False
             get_active_branch_id(request)  # 400 if the user has no branch
-            return set(codes) <= token_permissions(request)
+            return set(codes) <= frozenset(_claims(request).get('permissions', ()))
 
     HasBranchPermission.__name__ = f'HasBranchPermission({", ".join(codes)})'
     return HasBranchPermission
