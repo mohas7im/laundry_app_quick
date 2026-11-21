@@ -160,6 +160,8 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'SIGNING_KEY': SECRET_KEY,
+    # Standard JWT subject claim. Branch/role/permission claims are added in accounts/tokens.py.
+    'USER_ID_CLAIM': 'sub',
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 

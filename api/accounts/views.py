@@ -2,19 +2,47 @@ from django.conf import settings
 from django.contrib.auth.models import update_last_login
 from django.middleware.csrf import get_token
 from rest_framework import permissions, status, viewsets
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .access import IsOwner
+from .access import IsOwner, accessible_branches
 from .cookies import clear_auth_cookies, set_auth_cookies
 from .models import User
-from .serializers import ChangePasswordSerializer, LoginSerializer, MeSerializer, StaffUserSerializer
-from .tokens import revoke_all_sessions
+from .serializers import (
+    ChangePasswordSerializer,
+    LoginSerializer,
+    MeSerializer,
+    StaffUserSerializer,
+    SwitchBranchSerializer,
+)
+from .tokens import build_tokens, revoke_all_sessions
+
+
+def _auth_response(request, user, refresh, access, branch, status_code=status.HTTP_200_OK):
+    """Body = current user (with active branch); cookies = the new token pair."""
+    get_token(request)  # make sure the csrftoken cookie is set/rotated
+    data = MeSerializer(user, context={'active_branch_id': branch.id if branch else None}).data
+    response = Response({'user': data}, status=status_code)
+    return set_auth_cookies(response, access, refresh)
+
+
+def _token_branch_id(request):
+    """active_branch_id claim of the request's access token (None if no token)."""
+    token = getattr(request, 'auth', None)
+    return token.get('active_branch_id') if token is not None else None
+
+
+def _blacklist_cookie_refresh(request):
+    raw = request.COOKIES.get(settings.AUTH_COOKIE['REFRESH_NAME'])
+    if raw:
+        try:
+            RefreshToken(raw).blacklist()
+        except TokenError:
+            pass
 
 
 class LoginThrottle(AnonRateThrottle):
@@ -40,35 +68,60 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
 
-        refresh = RefreshToken.for_user(user)
+        refresh, access, branch = build_tokens(user, serializer.validated_data.get('branch_id'))
         update_last_login(None, user)
-        get_token(request)  # rotate/set csrftoken cookie
-
-        response = Response({'user': MeSerializer(user).data}, status=status.HTTP_200_OK)
-        return set_auth_cookies(response, refresh.access_token, refresh)
+        return _auth_response(request, user, refresh, access, branch)
 
 
 class RefreshView(APIView):
+    """
+    Rotate the refresh token and re-issue the access token with claims recomputed
+    from the database, so role/permission/branch changes apply within 15 minutes.
+    """
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        raw_refresh = request.COOKIES.get(settings.AUTH_COOKIE['REFRESH_NAME'])
-        if not raw_refresh:
+        raw = request.COOKIES.get(settings.AUTH_COOKIE['REFRESH_NAME'])
+        if not raw:
             return Response({'detail': 'Refresh token missing.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        serializer = TokenRefreshSerializer(data={'refresh': raw_refresh})
         try:
-            serializer.is_valid(raise_exception=True)
-        except (TokenError, InvalidToken, AuthenticationFailed):
-            response = Response({'detail': 'Refresh token invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
-            return clear_auth_cookies(response)
+            old = RefreshToken(raw)  # verifies signature, expiry and blacklist
+        except TokenError:
+            return self._reject()
 
-        data = serializer.validated_data
+        user = User.objects.filter(pk=old.get(jwt_settings.USER_ID_CLAIM), is_active=True).first()
+        if user is None:
+            return self._reject()
+
+        old.blacklist()
+        refresh, access, branch = build_tokens(user, old.get('active_branch_id'))
         get_token(request)
-        response = Response({'detail': 'Token refreshed.'}, status=status.HTTP_200_OK)
-        # With ROTATE_REFRESH_TOKENS=True a new refresh token is issued and the old one blacklisted.
-        return set_auth_cookies(response, data['access'], data.get('refresh'))
+        response = Response({'detail': 'Token refreshed.', 'active_branch_id': branch.id if branch else None})
+        return set_auth_cookies(response, access, refresh)
+
+    @staticmethod
+    def _reject():
+        response = Response({'detail': 'Refresh token invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
+        return clear_auth_cookies(response)
+
+
+class SwitchBranchView(APIView):
+    """Issue a new token pair scoped to another branch the user can access."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = SwitchBranchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        branch_id = serializer.validated_data['branch_id']
+
+        if not any(b.id == branch_id for b in accessible_branches(request.user)):
+            return Response({'detail': 'You do not have access to this branch.'}, status=status.HTTP_403_FORBIDDEN)
+
+        _blacklist_cookie_refresh(request)
+        refresh, access, branch = build_tokens(request.user, branch_id)
+        return _auth_response(request, request.user, refresh, access, branch)
 
 
 class LogoutView(APIView):
@@ -76,22 +129,18 @@ class LogoutView(APIView):
     authentication_classes = []
 
     def post(self, request):
-        raw_refresh = request.COOKIES.get(settings.AUTH_COOKIE['REFRESH_NAME'])
-        if raw_refresh:
-            try:
-                RefreshToken(raw_refresh).blacklist()
-            except TokenError:
-                pass
+        _blacklist_cookie_refresh(request)
         response = Response(status=status.HTTP_204_NO_CONTENT)
         return clear_auth_cookies(response)
 
 
 class MeView(APIView):
-    """The logged-in user, with the branches they can access and their permissions in each."""
+    """The logged-in user, the branches they can switch to, and the active one (from the token)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response(MeSerializer(request.user).data)
+        context = {'active_branch_id': _token_branch_id(request)}
+        return Response(MeSerializer(request.user, context=context).data)
 
 
 class ChangePasswordView(APIView):
@@ -104,11 +153,11 @@ class ChangePasswordView(APIView):
         request.user.set_password(serializer.validated_data['new_password'])
         request.user.save(update_fields=['password'])
 
-        # Log out other devices, then issue a fresh pair for this session.
+        # Log out other devices, then issue a fresh pair for this session (same branch).
         revoke_all_sessions(request.user)
-        refresh = RefreshToken.for_user(request.user)
+        refresh, access, _ = build_tokens(request.user, _token_branch_id(request))
         response = Response({'detail': 'Password changed.'})
-        return set_auth_cookies(response, refresh.access_token, refresh)
+        return set_auth_cookies(response, access, refresh)
 
 
 class StaffUserViewSet(viewsets.ModelViewSet):

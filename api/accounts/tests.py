@@ -2,6 +2,7 @@ from datetime import timedelta
 from io import StringIO
 
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -13,6 +14,7 @@ REFRESH = settings.AUTH_COOKIE['REFRESH_NAME']
 
 class AuthFlowTests(APITestCase):
     def setUp(self):
+        cache.clear()  # reset the login rate limit between tests
         self.client = APIClient(enforce_csrf_checks=True)
         self.user = User.objects.create_user(email='staff@shop.com', password='S3cure-pass!', full_name='Ajmal')
 

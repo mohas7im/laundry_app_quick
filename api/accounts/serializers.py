@@ -13,12 +13,21 @@ from .models import User
 # ── Current user (/auth/me, login response) ────────────────────────────────
 
 class MeSerializer(serializers.ModelSerializer):
+    """
+    Pass context={'active_branch_id': ...} — the branch in the user's current access token.
+    `branches` lists every branch the user may switch to.
+    """
     branches = serializers.SerializerMethodField()
+    active_branch_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'is_owner', 'branches', 'date_joined', 'last_login']
+        fields = ['id', 'email', 'full_name', 'phone', 'is_owner', 'active_branch_id', 'branches',
+                  'date_joined', 'last_login']
         read_only_fields = fields
+
+    def get_active_branch_id(self, user):
+        return self.context.get('active_branch_id')
 
     def get_branches(self, user):
         return [
@@ -36,6 +45,8 @@ class MeSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+    # Optional: the branch used last time on this device. Ignored if no longer accessible.
+    branch_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         user = authenticate(
@@ -47,6 +58,10 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid email or password.', code='authorization')
         attrs['user'] = user
         return attrs
+
+
+class SwitchBranchSerializer(serializers.Serializer):
+    branch_id = serializers.IntegerField()
 
 
 class ChangePasswordSerializer(serializers.Serializer):
