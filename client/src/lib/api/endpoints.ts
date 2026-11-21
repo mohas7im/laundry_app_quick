@@ -19,6 +19,7 @@ export const ENDPOINTS = {
     logout: "/api/auth/logout/",
     refresh: "/api/auth/refresh/",
     me: "/api/auth/me/",
+    switchBranch: "/api/auth/switch-branch/",
     changePassword: "/api/auth/change-password/",
   },
 

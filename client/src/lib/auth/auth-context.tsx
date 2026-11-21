@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 
-import { getActiveBranchId, setActiveBranchId } from "./active-branch"
+import { setLastBranchId } from "./active-branch"
 import { authService, type AuthUser, type LoginCredentials, type UserBranch } from "./auth.api"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
@@ -9,10 +9,14 @@ type AuthStatus = "loading" | "authenticated" | "anonymous"
 type AuthContextValue = {
   status: AuthStatus
   user: AuthUser | null
-  /** The branch the user is working in (null if they have none). */
+  /** The branch in the user's access token (null if they have none). */
   activeBranch: UserBranch | null
-  selectBranch: (branchId: number) => void
-  /** True if the user has this permission in the active branch. Owners always do. */
+  /** Ask the server for a token scoped to another branch. */
+  selectBranch: (branchId: number) => Promise<void>
+  /**
+   * UI hint: true if the active branch's permissions include this one (owners: always).
+   * Mirrors the token's `permissions` claim; the backend enforces it from the token.
+   */
   can: (permission: string) => boolean
   login: (credentials: LoginCredentials) => Promise<AuthUser>
   logout: () => Promise<void>
@@ -22,29 +26,25 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-function pickBranch(user: AuthUser | null): UserBranch | null {
-  if (!user?.branches.length) return null
-  const saved = getActiveBranchId()
-  return user.branches.find((b) => b.id === saved) ?? user.branches[0]!
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [status, setStatus] = useState<AuthStatus>("loading")
-  const [activeBranch, setActiveBranch] = useState<UserBranch | null>(null)
 
   const applyUser = useCallback((next: AuthUser | null) => {
-    const branch = pickBranch(next)
-    setActiveBranchId(branch?.id ?? null)
+    if (next?.active_branch_id) setLastBranchId(next.active_branch_id)
     setUser(next)
-    setActiveBranch(branch)
     setStatus(next ? "authenticated" : "anonymous")
   }, [])
 
   useEffect(() => {
     authService.me().then(applyUser)
   }, [applyUser])
+
+  const activeBranch = useMemo(
+    () => user?.branches.find((b) => b.id === user.active_branch_id) ?? null,
+    [user],
+  )
 
   const login = useCallback(
     async (credentials: LoginCredentials) => {
@@ -70,14 +70,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applyUser])
 
   const selectBranch = useCallback(
-    (branchId: number) => {
-      const branch = user?.branches.find((b) => b.id === branchId)
-      if (!branch) return
-      setActiveBranchId(branch.id)
-      setActiveBranch(branch)
+    async (branchId: number) => {
+      if (branchId === user?.active_branch_id) return
+      applyUser(await authService.switchBranch(branchId))
       queryClient.invalidateQueries() // branch-scoped data must refetch
     },
-    [user, queryClient],
+    [user, applyUser, queryClient],
   )
 
   const can = useCallback(

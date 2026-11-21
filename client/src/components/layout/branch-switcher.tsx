@@ -1,4 +1,5 @@
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   DropdownMenu,
@@ -14,6 +15,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/auth-context"
 
 /** Shows the active branch; lets users with several branches switch. */
@@ -69,7 +71,15 @@ export function BranchSwitcher() {
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">Switch branch</DropdownMenuLabel>
               {branches.map((branch) => (
-                <DropdownMenuItem key={branch.id} onClick={() => selectBranch(branch.id)}>
+                <DropdownMenuItem
+                  key={branch.id}
+                  onClick={() =>
+                    selectBranch(branch.id).then(
+                      () => toast.success(`Switched to ${branch.name}`),
+                      (err) => toast.error(getApiErrorMessage(err, "Couldn't switch branch.")),
+                    )
+                  }
+                >
                   <div className="grid flex-1 leading-tight">
                     <span>{branch.name}</span>
                     <span className="text-xs text-muted-foreground">{branch.role?.name ?? "Owner"}</span>

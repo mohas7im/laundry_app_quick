@@ -1,11 +1,9 @@
-// Remembers which branch the user is working in (per browser).
-// Read by the request interceptor to send X-Branch-ID; written by the auth context.
+// The branch used last on this device. Sent with login so the user lands back in it.
+// The real active branch lives in the access token (server side); this is only a preference.
 
-const STORAGE_KEY = "laundry.activeBranchId"
+const STORAGE_KEY = "laundry.lastBranchId"
 
-let current: number | null = load()
-
-function load(): number | null {
+export function getLastBranchId(): number | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? Number(raw) || null : null
@@ -14,16 +12,11 @@ function load(): number | null {
   }
 }
 
-export function getActiveBranchId(): number | null {
-  return current
-}
-
-export function setActiveBranchId(id: number | null): void {
-  current = id
+export function setLastBranchId(id: number | null): void {
   try {
     if (id === null) localStorage.removeItem(STORAGE_KEY)
     else localStorage.setItem(STORAGE_KEY, String(id))
   } catch {
-    // storage unavailable (private mode) — keep the in-memory value
+    // storage unavailable (private mode) — not critical
   }
 }

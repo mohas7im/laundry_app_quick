@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api/client"
 import { ENDPOINTS } from "@/lib/api/endpoints"
+import { getLastBranchId } from "./active-branch"
 
 export interface LoginCredentials {
   email: string
@@ -22,6 +23,9 @@ export interface AuthUser {
   full_name: string
   phone: string
   is_owner: boolean
+  /** The branch in the current access token (its role/permissions are the token's claims). */
+  active_branch_id: number | null
+  /** Every branch the user may switch to. */
   branches: UserBranch[]
   date_joined: string
   last_login: string | null
@@ -42,6 +46,16 @@ export const authService = {
     const { data } = await apiClient.post<{ user: AuthUser }>(ENDPOINTS.auth.login, {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
+      branch_id: getLastBranchId(), // land in the last-used branch if still allowed
+    })
+    cachedUser = data.user
+    return data.user
+  },
+
+  /** Re-issues the tokens scoped to another branch (new role/permission claims). */
+  async switchBranch(branchId: number): Promise<AuthUser> {
+    const { data } = await apiClient.post<{ user: AuthUser }>(ENDPOINTS.auth.switchBranch, {
+      branch_id: branchId,
     })
     cachedUser = data.user
     return data.user

@@ -12,6 +12,3 @@ export const API_CONFIG = {
 // Django's CSRF cookie / header names (see CSRF_* in api/config/settings.py).
 export const CSRF_COOKIE_NAME = "csrftoken"
 export const CSRF_HEADER_NAME = "X-CSRFToken"
-
-// The branch the user is working in; Django checks permissions against it (accounts/access.py).
-export const BRANCH_HEADER_NAME = "X-Branch-ID"
