@@ -1,21 +1,30 @@
-import { QueryClientProvider } from "@tanstack/react-query"
+import { useEffect } from "react"
+import { Provider } from "react-redux"
 import { RouterProvider } from "react-router"
 
 import { router } from "@/app/router"
+import { store, useAppDispatch } from "@/app/store"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { AuthProvider } from "@/lib/auth/auth-context"
-import { queryClient } from "@/lib/query-client"
+import { initAuth } from "@/lib/auth/auth-slice"
+
+/** Loads the logged-in user once at startup; route guards wait for it. */
+function AuthInit() {
+  const dispatch = useAppDispatch()
+  useEffect(() => {
+    dispatch(initAuth())
+  }, [dispatch])
+  return null
+}
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-          <Toaster richColors position="top-right" />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <Provider store={store}>
+      <AuthInit />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+        <Toaster richColors position="top-right" />
+      </TooltipProvider>
+    </Provider>
   )
 }

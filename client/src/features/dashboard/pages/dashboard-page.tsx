@@ -5,10 +5,10 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useBranches } from "@/features/branches/api"
-import { useRoles } from "@/features/roles/api"
-import { useStaffUsers } from "@/features/users/api"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useGetBranchesQuery } from "@/features/branches/api"
+import { useGetRolesQuery } from "@/features/roles/api"
+import { useGetStaffUsersQuery } from "@/features/users/api"
+import { useAuth } from "@/lib/auth/use-auth"
 
 export function DashboardPage() {
   const { user, activeBranch } = useAuth()
@@ -43,7 +43,7 @@ function ManagementOverview() {
 }
 
 function BranchesStat() {
-  const { data, isLoading } = useBranches()
+  const { data, isLoading } = useGetBranchesQuery()
   return (
     <StatCard
       title="Branches"
@@ -57,12 +57,12 @@ function BranchesStat() {
 }
 
 function RolesStat() {
-  const { data, isLoading } = useRoles()
+  const { data, isLoading } = useGetRolesQuery()
   return <StatCard title="Roles" icon={ShieldCheckIcon} to="/roles" loading={isLoading} value={data?.length} />
 }
 
 function UsersStat() {
-  const { data, isLoading } = useStaffUsers()
+  const { data, isLoading } = useGetStaffUsersQuery()
   return (
     <StatCard
       title="Staff"

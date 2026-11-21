@@ -4,11 +4,13 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { APP_NAME } from "@/config/navigation"
 import { useMyMenus } from "@/features/menus/api"
+import { findMenuForPath } from "@/features/menus/lib/match"
 
 export function SiteHeader() {
   const { pathname } = useLocation()
   const { data: menus } = useMyMenus()
-  const title = menus?.find((m) => m.path === pathname)?.name ?? APP_NAME
+  // the page's menu name, also on pages under its link (e.g. /permissions/<id> → Permissions)
+  const title = findMenuForPath(menus, pathname)?.name ?? APP_NAME
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">

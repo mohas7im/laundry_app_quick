@@ -1,6 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-
-import { apiClient } from "@/lib/api/client"
+import { baseApi } from "@/lib/api/base-api"
 import { ENDPOINTS } from "@/lib/api/endpoints"
 
 // Mirrors branches.serializers.BranchSerializer
@@ -19,33 +17,25 @@ export interface Branch {
 
 export type BranchInput = Pick<Branch, "name" | "code" | "phone" | "email" | "address" | "is_active">
 
-export const branchKeys = {
-  all: ["branches"] as const,
-}
+export const branchesApi = baseApi.injectEndpoints({
+  endpoints: (build) => ({
+    getBranches: build.query<Branch[], void>({
+      query: () => ENDPOINTS.branches.list,
+      providesTags: ["Branch"],
+    }),
+    /** Create when `id` is undefined, otherwise update. */
+    saveBranch: build.mutation<Branch, { id?: string; data: Partial<BranchInput> }>({
+      query: ({ id, data }) =>
+        id
+          ? { url: ENDPOINTS.branches.byId(id), method: "PATCH", data }
+          : { url: ENDPOINTS.branches.list, method: "POST", data },
+      invalidatesTags: ["Branch", "MyMenu"],
+    }),
+    deleteBranch: build.mutation<void, string>({
+      query: (id) => ({ url: ENDPOINTS.branches.byId(id), method: "DELETE" }),
+      invalidatesTags: ["Branch"],
+    }),
+  }),
+})
 
-export function useBranches() {
-  return useQuery({
-    queryKey: branchKeys.all,
-    queryFn: async () => (await apiClient.get<Branch[]>(ENDPOINTS.branches.list)).data,
-  })
-}
-
-/** Create when `id` is undefined, otherwise update. */
-export function useSaveBranch() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, data }: { id?: string; data: Partial<BranchInput> }) =>
-      id
-        ? (await apiClient.patch<Branch>(ENDPOINTS.branches.byId(id), data)).data
-        : (await apiClient.post<Branch>(ENDPOINTS.branches.list, data)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: branchKeys.all }),
-  })
-}
-
-export function useDeleteBranch() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(ENDPOINTS.branches.byId(id)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: branchKeys.all }),
-  })
-}
+export const { useGetBranchesQuery, useSaveBranchMutation, useDeleteBranchMutation } = branchesApi

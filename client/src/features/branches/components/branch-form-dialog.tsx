@@ -16,8 +16,8 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
-import { useSaveBranch, type Branch, type BranchInput } from "../api"
+import { useAuth } from "@/lib/auth/use-auth"
+import { useSaveBranchMutation, type Branch, type BranchInput } from "../api"
 
 const empty: BranchInput = { name: "", code: "", phone: "", email: "", address: "", is_active: true }
 
@@ -39,7 +39,7 @@ export function BranchFormDialog({ open, onOpenChange, branch }: Props) {
 }
 
 function BranchForm({ branch, onDone }: { branch?: Branch | null; onDone: () => void }) {
-  const save = useSaveBranch()
+  const [save, { isLoading: saving }] = useSaveBranchMutation()
   const { reload } = useAuth()
   const [values, setValues] = useState<BranchInput>(branch ? { ...branch } : empty)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -51,7 +51,7 @@ function BranchForm({ branch, onDone }: { branch?: Branch | null; onDone: () => 
     e.preventDefault()
     setErrors({})
     try {
-      await save.mutateAsync({ id: branch?.id, data: values })
+      await save({ id: branch?.id, data: values }).unwrap()
       await reload() // branch list in the switcher may have changed
       toast.success(branch ? "Branch updated" : "Branch created")
       onDone()
@@ -108,8 +108,8 @@ function BranchForm({ branch, onDone }: { branch?: Branch | null; onDone: () => 
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? "Saving…" : branch ? "Save changes" : "Create branch"}
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving…" : branch ? "Save changes" : "Create branch"}
         </Button>
       </DialogFooter>
     </form>

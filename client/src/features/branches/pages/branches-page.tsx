@@ -5,19 +5,19 @@ import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataTableColumn } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
-import { RowActions } from "@/components/row-actions"
+import { RowActionButtons } from "@/components/row-action-buttons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
-import { useBranches, useDeleteBranch, type Branch } from "../api"
+import { useAuth } from "@/lib/auth/use-auth"
+import { useGetBranchesQuery, useDeleteBranchMutation, type Branch } from "../api"
 import { BranchFormDialog } from "../components/branch-form-dialog"
 
 const NO_BRANCHES: Branch[] = []
 
 export function BranchesPage() {
-  const { data = NO_BRANCHES, isLoading } = useBranches()
-  const remove = useDeleteBranch()
+  const { data = NO_BRANCHES, isLoading } = useGetBranchesQuery()
+  const [remove, { isLoading: removing }] = useDeleteBranchMutation()
   const { can, reload } = useAuth()
   const canEdit = can("branches.edit")
   const canDelete = can("branches.delete")
@@ -54,7 +54,7 @@ export function BranchesPage() {
         header: () => <span className="sr-only">Actions</span>,
         enableSorting: false,
         cell: ({ row }) => (
-          <RowActions
+          <RowActionButtons
             label={row.original.name}
             onEdit={
               canEdit
@@ -75,7 +75,7 @@ export function BranchesPage() {
   async function confirmDelete() {
     if (!deleting) return
     try {
-      await remove.mutateAsync(deleting.id)
+      await remove(deleting.id).unwrap()
       await reload()
       toast.success("Branch deleted")
     } catch (err) {
@@ -90,19 +90,6 @@ export function BranchesPage() {
       <PageHeader
         title="Branches"
         description="Shop locations. Staff are assigned to branches on the Users page."
-        actions={
-          can("branches.create") && (
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <PlusIcon />
-            New branch
-          </Button>
-          )
-        }
       />
 
       <DataTable
@@ -112,6 +99,19 @@ export function BranchesPage() {
         getRowId={(b) => String(b.id)}
         searchPlaceholder="Search branches…"
         emptyMessage="No branches yet. Create your first branch."
+        toolbar={
+          can("branches.create") && (
+          <Button
+            onClick={() => {
+              setEditing(null)
+              setFormOpen(true)
+            }}
+          >
+            <PlusIcon data-icon="inline-start" />
+            New branch
+          </Button>
+          )
+        }
       />
 
       <BranchFormDialog open={formOpen} onOpenChange={setFormOpen} branch={editing} />
@@ -123,7 +123,7 @@ export function BranchesPage() {
         description="This can't be undone. Branches with staff can't be deleted — deactivate them instead."
         confirmLabel="Delete"
         destructive
-        pending={remove.isPending}
+        pending={removing}
         onConfirm={confirmDelete}
       />
     </>

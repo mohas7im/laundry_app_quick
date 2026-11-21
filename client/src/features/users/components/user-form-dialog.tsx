@@ -15,13 +15,13 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import { SelectField } from "@/components/select-field"
 import { Switch } from "@/components/ui/switch"
-import { useBranches } from "@/features/branches/api"
-import { useRoles } from "@/features/roles/api"
+import { useGetBranchesQuery } from "@/features/branches/api"
+import { useGetRolesQuery } from "@/features/roles/api"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
-import { useSaveStaffUser, type StaffUser } from "../api"
+import { useAuth } from "@/lib/auth/use-auth"
+import { useSaveStaffUserMutation, type StaffUser } from "../api"
 
 type Props = {
   open: boolean
@@ -48,9 +48,9 @@ let nextKey = 1
 const emptyRow = (): RoleRow => ({ key: nextKey++, role: "", scope: "" })
 
 function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => void }) {
-  const save = useSaveStaffUser()
-  const branches = useBranches()
-  const roles = useRoles()
+  const [save, { isLoading: saving }] = useSaveStaffUserMutation()
+  const branches = useGetBranchesQuery()
+  const roles = useGetRolesQuery()
   const { user: me } = useAuth()
 
   const [email, setEmail] = useState(user?.email ?? "")
@@ -89,7 +89,7 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
     }
     setErrors({})
     try {
-      await save.mutateAsync({
+      await save({
         id: user?.id,
         data: {
           email,
@@ -99,7 +99,7 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
           roles: rows.map((r) => ({ role: r.role, branch: r.scope === ALL_BRANCHES ? null : r.scope })),
           ...(password ? { password } : {}),
         },
-      })
+      }).unwrap()
       toast.success(user ? "User updated" : "User created")
       onDone()
     } catch (err) {
@@ -170,35 +170,26 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
 
           {rows.map((row, i) => (
             <div key={row.key} className="flex items-center gap-2">
-              <NativeSelect
+              <SelectField
                 className="flex-1"
                 aria-label={`Role ${i + 1}`}
-                value={row.role}
-                onChange={(e) => update(row.key, { role: e.target.value })}
-              >
-                <NativeSelectOption value="">Select role…</NativeSelectOption>
-                {roleList.map((r) => (
-                  <NativeSelectOption key={r.id} value={r.id}>
-                    {r.name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <NativeSelect
+                placeholder="Select role…"
+                value={row.role || null}
+                onValueChange={(v) => update(row.key, { role: v ?? "" })}
+                options={roleList.map((r) => ({ value: r.id, label: r.name }))}
+              />
+              <SelectField
                 className="flex-1"
                 aria-label={`Where role ${i + 1} applies`}
-                value={row.scope}
+                placeholder="Select where…"
+                value={row.scope || null}
                 disabled={row.role === ownerRoleId}
-                onChange={(e) => update(row.key, { scope: e.target.value })}
-              >
-                <NativeSelectOption value="">Select where…</NativeSelectOption>
-                <NativeSelectOption value={ALL_BRANCHES}>All branches</NativeSelectOption>
-                {branchList.map((b) => (
-                  <NativeSelectOption key={b.id} value={b.id}>
-                    {b.name}
-                    {!b.is_active ? " (inactive)" : ""}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                onValueChange={(v) => update(row.key, { scope: v ?? "" })}
+                options={[
+                  { value: ALL_BRANCHES, label: "All branches" },
+                  ...branchList.map((b) => ({ value: b.id, label: b.is_active ? b.name : `${b.name} (inactive)` })),
+                ]}
+              />
               <Button
                 type="button"
                 variant="ghost"
@@ -231,8 +222,8 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel
           </Button>
-          <Button type="submit" disabled={save.isPending || noRoles}>
-            {save.isPending ? "Saving…" : user ? "Save changes" : "Create user"}
+          <Button type="submit" disabled={saving || noRoles}>
+            {saving ? "Saving…" : user ? "Save changes" : "Create user"}
           </Button>
         </DialogFooter>
       </FieldGroup>

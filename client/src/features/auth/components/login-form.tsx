@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/lib/auth/use-auth"
 
 /** Only allow redirects to paths inside this app (no //evil.com or https://…). */
 function safeNext(next: string | null): string {

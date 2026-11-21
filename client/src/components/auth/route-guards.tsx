@@ -1,7 +1,7 @@
 import { LoaderIcon } from "lucide-react"
 import { Navigate, Outlet, useLocation } from "react-router"
 
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/lib/auth/use-auth"
 import { LOGIN_PATH } from "@/lib/auth/session"
 
 function FullPageSpinner() {

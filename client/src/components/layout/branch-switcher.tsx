@@ -16,7 +16,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/lib/auth/use-auth"
 
 /** Shows the active branch; lets users with several branches switch. */
 export function BranchSwitcher() {

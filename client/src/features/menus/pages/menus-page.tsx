@@ -1,104 +1,100 @@
 import { useMemo, useState } from "react"
+import { useNavigate } from "react-router"
 import { PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataTableColumn } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
-import { RowActions } from "@/components/row-actions"
+import { RowActionButtons } from "@/components/row-action-buttons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/lib/auth/use-auth"
 import { menuIcon } from "@/lib/icons"
-import { useDeleteMenu, useMenus, type Menu } from "../api"
-import { MenuFormDialog } from "../components/menu-form-dialog"
+import { useDeleteMenuMutation, useGetMenusQuery, type Menu } from "../api"
 
 const NO_MENUS: Menu[] = []
+const yesNo = (v: boolean) => (v ? "Yes" : "No")
 
+/** The feature list: every menu, in tree order (sortable by any column). */
 export function MenusPage() {
-  const { data = NO_MENUS, isLoading } = useMenus()
-  const remove = useDeleteMenu()
+  const navigate = useNavigate()
+  const { data = NO_MENUS, isLoading } = useGetMenusQuery()
+  const [remove, { isLoading: removing }] = useDeleteMenuMutation()
   const { can, reload } = useAuth()
-
-  const [editing, setEditing] = useState<Menu | null>(null)
-  const [formOpen, setFormOpen] = useState(false)
   const [deleting, setDeleting] = useState<Menu | null>(null)
 
   const canEdit = can("menus.edit")
   const canDelete = can("menus.delete")
 
-  const columns = useMemo<DataTableColumn<Menu>[]>(
-    () => [
+  const columns = useMemo<DataTableColumn<Menu>[]>(() => {
+    const names = new Map(data.map((m) => [m.id, m.name]))
+    return [
       {
         accessorKey: "name",
-        header: "Menu",
-        enableSorting: false, // keep tree order
+        header: "Name",
         cell: ({ row }) => {
           const m = row.original
-          const Icon = menuIcon(m.icon)
           return (
-            <div className="flex items-center gap-2" style={{ paddingLeft: `${m.depth * 1.5}rem` }}>
-              <Icon className="size-4 text-muted-foreground" />
-              <span className={m.path ? "font-medium" : "font-semibold uppercase tracking-wide text-muted-foreground"}>
-                {m.name}
-              </span>
+            <span className="flex items-center gap-2" style={{ paddingLeft: `${(m.depth ?? 0) * 1.25}rem` }}>
+              <span className="font-medium">{m.name}</span>
               {m.is_system && <Badge variant="outline">Built-in</Badge>}
               {!m.is_active && <Badge variant="secondary">Hidden</Badge>}
-            </div>
+            </span>
           )
         },
       },
-      { accessorKey: "code", header: "Code", enableSorting: false },
+      { accessorKey: "code", header: "Code" },
+      { accessorKey: "router_name", header: "Router" },
+      { accessorKey: "router_description", header: "Description" },
       {
-        accessorKey: "path",
-        header: "Path",
-        enableSorting: false,
-        cell: ({ getValue }) => (getValue() as string) || <span className="text-muted-foreground">Heading</span>,
+        accessorKey: "router_link",
+        header: "Router link",
+        cell: ({ getValue }) => (getValue() ? <code className="text-xs">{getValue() as string}</code> : "—"),
+      },
+      { accessorKey: "sort_order", header: "Sequence" },
+      {
+        accessorKey: "icon",
+        header: "Icon",
+        cell: ({ row }) => {
+          if (!row.original.icon) return "—"
+          const Icon = menuIcon(row.original.icon)
+          return (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Icon className="size-4" />
+              {row.original.icon}
+            </span>
+          )
+        },
       },
       {
-        id: "actions_list",
-        header: "Actions",
-        enableSorting: false,
-        accessorFn: (m) => m.actions.join(" "),
-        cell: ({ row }) => (
-          <div className="flex flex-wrap gap-1">
-            {row.original.actions.map((a) => (
-              <Badge key={a} variant="secondary" className="capitalize">
-                {a}
-              </Badge>
-            ))}
-          </div>
-        ),
+        id: "parent",
+        header: "Parent",
+        accessorFn: (m) => (m.parent ? (names.get(m.parent) ?? "") : ""),
+        cell: ({ getValue }) => (getValue() as string) || "—",
       },
+      { id: "is_header", header: "Header", accessorFn: (m) => yesNo(m.is_header) },
+      { id: "is_sub_header", header: "Sub header", accessorFn: (m) => yesNo(m.is_sub_header) },
       {
         id: "actions",
-        header: () => <span className="sr-only">Row actions</span>,
+        header: () => <span className="sr-only">Actions</span>,
         enableSorting: false,
-        cell: ({ row }) =>
-          canEdit || canDelete ? (
-            <RowActions
-              label={row.original.name}
-              onEdit={
-                canEdit
-                  ? () => {
-                      setEditing(row.original)
-                      setFormOpen(true)
-                    }
-                  : undefined
-              }
-              onDelete={canDelete && !row.original.is_system ? () => setDeleting(row.original) : undefined}
-            />
-          ) : null,
+        cell: ({ row }) => (
+          <RowActionButtons
+            label={row.original.name}
+            onEdit={canEdit ? () => navigate(`/menus/${row.original.id}/edit`) : undefined}
+            onDelete={canDelete && !row.original.is_system ? () => setDeleting(row.original) : undefined}
+          />
+        ),
       },
-    ],
-    [canEdit, canDelete],
-  )
+    ]
+  }, [data, canEdit, canDelete, navigate])
 
   async function confirmDelete() {
     if (!deleting) return
     try {
-      await remove.mutateAsync(deleting.id)
+      await remove(deleting.id).unwrap()
       await reload()
       toast.success("Menu deleted")
     } catch (err) {
@@ -110,23 +106,7 @@ export function MenusPage() {
 
   return (
     <>
-      <PageHeader
-        title="Menus"
-        description="Sidebar items and the actions people can be allowed to do on each. Give actions to roles on the Roles page."
-        actions={
-          can("menus.create") && (
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              <PlusIcon data-icon="inline-start" />
-              New menu
-            </Button>
-          )
-        }
-      />
+      <PageHeader title="Menus" description="Every feature in the app. Each one has a permission for every action." />
 
       <DataTable
         columns={columns}
@@ -135,9 +115,15 @@ export function MenusPage() {
         getRowId={(m) => m.id}
         searchPlaceholder="Search menus…"
         emptyMessage="No menus yet."
+        toolbar={
+          can("menus.create") && (
+            <Button onClick={() => navigate("/menus/new")}>
+              <PlusIcon data-icon="inline-start" />
+              New menu
+            </Button>
+          )
+        }
       />
-
-      <MenuFormDialog open={formOpen} onOpenChange={setFormOpen} menu={editing} />
 
       <ConfirmDialog
         open={!!deleting}
@@ -146,7 +132,7 @@ export function MenusPage() {
         description="Its permissions are deleted too and removed from every role. This can't be undone."
         confirmLabel="Delete"
         destructive
-        pending={remove.isPending}
+        pending={removing}
         onConfirm={confirmDelete}
       />
     </>

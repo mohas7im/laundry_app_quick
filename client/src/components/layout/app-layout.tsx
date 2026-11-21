@@ -6,7 +6,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { SiteHeader } from "@/components/layout/site-header"
 import { Button } from "@/components/ui/button"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/lib/auth/use-auth"
 
 function NoBranchAssigned() {
   const { logout } = useAuth()
@@ -41,9 +41,10 @@ export function AppLayout() {
       }
     >
       <AppSidebar variant="inset" />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <SiteHeader />
-        <main className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+        {/* min-w-0: let wide content (tables) scroll inside the page instead of widening it */}
+        <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 lg:p-6">
           <Outlet />
         </main>
       </SidebarInset>

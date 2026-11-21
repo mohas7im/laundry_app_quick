@@ -1,11 +1,14 @@
 import {
   columnFilteringFeature,
   createFilteredRowModel,
+  createPaginatedRowModel,
   createSortedRowModel,
   filterFn_includesString,
   globalFilteringFeature,
+  rowPaginationFeature,
   rowSortingFeature,
   sortFn_alphanumeric,
+  sortFn_basic,
   sortFn_datetime,
   sortFn_text,
   tableFeatures,
@@ -13,9 +16,20 @@ import {
   type ColumnDef,
   type RowData,
 } from "@tanstack/react-table"
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, SearchIcon } from "lucide-react"
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+  ChevronsUpDownIcon,
+  SearchIcon,
+} from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SelectField } from "@/components/select-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -26,7 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-/** Client-side sorting + text search. Shared by every list page. */
+/** Client-side search, sorting and pagination. Shared by every list page. */
 export const dataTableFeatures = tableFeatures({
   columnFilteringFeature,
   globalFilteringFeature,
@@ -34,11 +48,15 @@ export const dataTableFeatures = tableFeatures({
   filterFns: { includesString: filterFn_includesString },
   rowSortingFeature,
   sortedRowModel: createSortedRowModel(),
-  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, datetime: sortFn_datetime },
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, datetime: sortFn_datetime, basic: sortFn_basic },
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
 })
 
 export type DataTableFeatures = typeof dataTableFeatures
 export type DataTableColumn<TData extends RowData> = ColumnDef<DataTableFeatures, TData, any>
+
+const PAGE_SIZES = [10, 20, 50, 100]
 
 type DataTableProps<TData extends RowData> = {
   /** Must be stable (module scope or useMemo). */
@@ -48,6 +66,9 @@ type DataTableProps<TData extends RowData> = {
   searchPlaceholder?: string
   emptyMessage?: string
   getRowId?: (row: TData) => string
+  /** Buttons on the right of the toolbar, e.g. Create. */
+  toolbar?: React.ReactNode
+  pageSize?: number
 }
 
 export function DataTable<TData extends RowData>({
@@ -57,6 +78,8 @@ export function DataTable<TData extends RowData>({
   searchPlaceholder = "Search…",
   emptyMessage = "Nothing here yet.",
   getRowId,
+  toolbar,
+  pageSize = 10,
 }: DataTableProps<TData>) {
   const table = useTable({
     features: dataTableFeatures,
@@ -65,25 +88,34 @@ export function DataTable<TData extends RowData>({
     getRowId,
     globalFilterFn: "includesString",
     getColumnCanGlobalFilter: (column) => column.id !== "actions",
+    initialState: { pagination: { pageIndex: 0, pageSize } },
   })
 
   const rows = table.getRowModel().rows
-  const columnCount = table.getAllLeafColumns().length
+  const visibleColumns = table.getAllLeafColumns().length
+  const { pageIndex, pageSize: size } = table.state.pagination
+  const total = table.getPrePaginatedRowModel().rows.length
+  const pageCount = Math.max(table.getPageCount(), 1)
+  const from = total ? pageIndex * size + 1 : 0
+  const to = Math.min((pageIndex + 1) * size, total)
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative w-full sm:max-w-xs">
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={(table.state.globalFilter as string) ?? ""}
-          onChange={(e) => table.setGlobalFilter(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="pl-8"
-          aria-label={searchPlaceholder}
-        />
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-xs">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={(table.state.globalFilter as string) ?? ""}
+            onChange={(e) => table.setGlobalFilter(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="pl-8"
+            aria-label={searchPlaceholder}
+          />
+        </div>
+        {toolbar && <div className="flex items-center gap-2">{toolbar}</div>}
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((group) => (
@@ -105,7 +137,7 @@ export function DataTable<TData extends RowData>({
                           ) : sorted === "desc" ? (
                             <ArrowDownIcon className="size-3.5" />
                           ) : (
-                            <ArrowUpDownIcon className="size-3.5 opacity-40" />
+                            <ChevronsUpDownIcon className="size-3.5 opacity-50" />
                           )}
                         </button>
                       ) : (
@@ -121,7 +153,7 @@ export function DataTable<TData extends RowData>({
             {isLoading ? (
               Array.from({ length: 3 }, (_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={columnCount}>
+                  <TableCell colSpan={visibleColumns}>
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
                 </TableRow>
@@ -138,13 +170,55 @@ export function DataTable<TData extends RowData>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columnCount} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={visibleColumns} className="h-24 text-center text-muted-foreground">
                   {table.state.globalFilter ? "No matches." : emptyMessage}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span id="rows-per-page-label" className="font-medium">
+            Rows per page
+          </span>
+          <SelectField
+            aria-label="Rows per page"
+            size="sm"
+            className="w-20"
+            value={String(size)}
+            onValueChange={(v) => v && table.setPageSize(Number(v))}
+            options={PAGE_SIZES.map((n) => ({ value: String(n), label: n }))}
+          />
+          <span className="text-muted-foreground tabular-nums">
+            {from}–{to} of {total}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-medium tabular-nums">
+            Page {pageIndex + 1} of {pageCount}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon-sm" aria-label="First page"
+              disabled={!table.getCanPreviousPage()} onClick={() => table.firstPage()}>
+              <ChevronsLeftIcon />
+            </Button>
+            <Button variant="outline" size="icon-sm" aria-label="Previous page"
+              disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
+              <ChevronLeftIcon />
+            </Button>
+            <Button variant="outline" size="icon-sm" aria-label="Next page"
+              disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
+              <ChevronRightIcon />
+            </Button>
+            <Button variant="outline" size="icon-sm" aria-label="Last page"
+              disabled={!table.getCanNextPage()} onClick={() => table.lastPage()}>
+              <ChevronsRightIcon />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

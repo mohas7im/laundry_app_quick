@@ -1,6 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-
-import { apiClient } from "@/lib/api/client"
+import { baseApi } from "@/lib/api/base-api"
 import { ENDPOINTS } from "@/lib/api/endpoints"
 
 // Mirrors accounts.serializers.UserRoleSerializer: one row of user_roles.
@@ -37,34 +35,26 @@ export interface StaffUserInput {
   roles: { role: string; branch: string | null }[]
 }
 
-export const userKeys = {
-  all: ["users"] as const,
-}
+export const usersApi = baseApi.injectEndpoints({
+  endpoints: (build) => ({
+    getStaffUsers: build.query<StaffUser[], void>({
+      query: () => ENDPOINTS.users.list,
+      providesTags: ["User"],
+    }),
+    /** Create when `id` is undefined, otherwise update. */
+    saveStaffUser: build.mutation<StaffUser, { id?: string; data: StaffUserInput }>({
+      query: ({ id, data }) =>
+        id
+          ? { url: ENDPOINTS.users.byId(id), method: "PATCH", data }
+          : { url: ENDPOINTS.users.list, method: "POST", data },
+      // branch and role lists show user counts
+      invalidatesTags: ["User", "Branch", "Role"],
+    }),
+    deleteStaffUser: build.mutation<void, string>({
+      query: (id) => ({ url: ENDPOINTS.users.byId(id), method: "DELETE" }),
+      invalidatesTags: ["User", "Branch", "Role"],
+    }),
+  }),
+})
 
-export function useStaffUsers() {
-  return useQuery({
-    queryKey: userKeys.all,
-    queryFn: async () => (await apiClient.get<StaffUser[]>(ENDPOINTS.users.list)).data,
-  })
-}
-
-/** Create when `id` is undefined, otherwise update. */
-export function useSaveStaffUser() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, data }: { id?: string; data: StaffUserInput }) =>
-      id
-        ? (await apiClient.patch<StaffUser>(ENDPOINTS.users.byId(id), data)).data
-        : (await apiClient.post<StaffUser>(ENDPOINTS.users.list, data)).data,
-    // Branch and role pages show user counts.
-    onSuccess: () => qc.invalidateQueries(),
-  })
-}
-
-export function useDeleteStaffUser() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(ENDPOINTS.users.byId(id)),
-    onSuccess: () => qc.invalidateQueries(),
-  })
-}
+export const { useGetStaffUsersQuery, useSaveStaffUserMutation, useDeleteStaffUserMutation } = usersApi
