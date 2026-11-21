@@ -1,11 +1,35 @@
 import type { CSSProperties } from "react"
 import { Outlet } from "react-router"
+import { Building2Icon } from "lucide-react"
 
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { SiteHeader } from "@/components/layout/site-header"
+import { Button } from "@/components/ui/button"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { useAuth } from "@/lib/auth/auth-context"
+
+function NoBranchAssigned() {
+  const { logout } = useAuth()
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+      <Building2Icon className="size-10 text-muted-foreground" />
+      <h1 className="text-xl font-semibold">No branch assigned</h1>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        Your account isn't linked to an active branch yet. Ask the shop owner to assign you one.
+      </p>
+      <Button variant="outline" onClick={() => void logout()}>
+        Log out
+      </Button>
+    </div>
+  )
+}
 
 export function AppLayout() {
+  const { user, activeBranch } = useAuth()
+
+  // Staff need a branch to work in; the owner can still reach admin pages to create one.
+  if (user && !user.is_owner && !activeBranch) return <NoBranchAssigned />
+
   return (
     <SidebarProvider
       style={
@@ -18,7 +42,7 @@ export function AppLayout() {
       <AppSidebar variant="inset" />
       <SidebarInset>
         <SiteHeader />
-        <main className="flex flex-1 flex-col">
+        <main className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
           <Outlet />
         </main>
       </SidebarInset>

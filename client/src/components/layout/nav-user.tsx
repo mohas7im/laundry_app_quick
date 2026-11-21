@@ -1,4 +1,4 @@
-import { CircleUserRoundIcon, EllipsisVerticalIcon, LogOutIcon } from "lucide-react"
+import { EllipsisVerticalIcon, LogOutIcon } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -16,14 +16,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-
-export type NavUserProps = {
-  user: {
-    name: string
-    email: string
-  }
-  onLogout?: () => void
-}
+import { useAuth } from "@/lib/auth/auth-context"
 
 function initials(name: string) {
   return name
@@ -34,16 +27,18 @@ function initials(name: string) {
     .join("")
 }
 
-export function NavUser({ user, onLogout }: NavUserProps) {
+export function NavUser() {
+  const { user, logout } = useAuth()
   const { isMobile } = useSidebar()
+  if (!user) return null
 
   const identity = (
     <>
       <Avatar className="size-8 rounded-lg">
-        <AvatarFallback className="rounded-lg">{initials(user.name)}</AvatarFallback>
+        <AvatarFallback className="rounded-lg">{initials(user.full_name)}</AvatarFallback>
       </Avatar>
       <div className="grid flex-1 text-left text-sm leading-tight">
-        <span className="truncate font-medium">{user.name}</span>
+        <span className="truncate font-medium">{user.full_name}</span>
         <span className="truncate text-xs text-muted-foreground">{user.email}</span>
       </div>
     </>
@@ -71,14 +66,7 @@ export function NavUser({ user, onLogout }: NavUserProps) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <CircleUserRoundIcon />
-                Account
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout}>
+            <DropdownMenuItem onClick={() => void logout()}>
               <LogOutIcon />
               Log out
             </DropdownMenuItem>

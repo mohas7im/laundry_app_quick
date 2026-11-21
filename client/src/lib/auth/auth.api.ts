@@ -6,14 +6,23 @@ export interface LoginCredentials {
   password: string
 }
 
-// Mirrors accounts.serializers.UserSerializer. `role` comes from the API as-is;
-// the backend owns the list of roles.
+/** A branch the user can work in, with their role and permission codes there. */
+export interface UserBranch {
+  id: number
+  name: string
+  code: string
+  role: { id: number; name: string } | null // null for the owner
+  permissions: string[]
+}
+
+// Mirrors accounts.serializers.MeSerializer
 export interface AuthUser {
   id: number
   email: string
   full_name: string
   phone: string
-  role: string
+  is_owner: boolean
+  branches: UserBranch[]
   date_joined: string
   last_login: string | null
 }
@@ -60,7 +69,8 @@ export const authService = {
 
     inFlightMeRequest = (async () => {
       try {
-        const { data } = await apiClient.get<AuthUser>(ENDPOINTS.auth.me)
+        // On app start a 401 just means "not logged in" — the route guard redirects.
+        const { data } = await apiClient.get<AuthUser>(ENDPOINTS.auth.me, { skipAuthRedirect: true })
         cachedUser = data
         return data
       } catch {
@@ -72,9 +82,5 @@ export const authService = {
     })()
 
     return inFlightMeRequest
-  },
-
-  async isAuthenticated(): Promise<boolean> {
-    return (await this.me()) !== null
   },
 }

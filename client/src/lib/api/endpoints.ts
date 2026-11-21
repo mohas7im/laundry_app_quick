@@ -1,7 +1,8 @@
 // Every API path in one place. Callers use these instead of typing URLs.
 // Django URLs end with a trailing slash — keep it, or Django will 404/redirect.
 //
-//   auth → /api/auth/*   session management (JWT in HttpOnly cookies)
+//   auth   → /api/auth/*   session management (JWT in HttpOnly cookies)
+//   owner  → branches, roles, permissions, users (owner account only)
 
 type Id = string | number
 
@@ -20,4 +21,9 @@ export const ENDPOINTS = {
     me: "/api/auth/me/",
     changePassword: "/api/auth/change-password/",
   },
+
+  branches: crud("/api/branches"),
+  roles: crud("/api/roles"),
+  permissions: "/api/permissions/",
+  users: crud("/api/users"),
 } as const

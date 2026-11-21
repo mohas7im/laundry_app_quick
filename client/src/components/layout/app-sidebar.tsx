@@ -2,8 +2,8 @@ import * as React from "react"
 import { Link } from "react-router"
 import { WashingMachineIcon } from "lucide-react"
 
+import { BranchSwitcher } from "@/components/layout/branch-switcher"
 import { NavMain } from "@/components/layout/nav-main"
-import { NavSecondary } from "@/components/layout/nav-secondary"
 import { NavUser } from "@/components/layout/nav-user"
 import {
   Sidebar,
@@ -14,13 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { APP_NAME, mainNav, secondaryNav } from "@/config/navigation"
-
-// TODO: replace with the logged-in user from /api/auth/me/ once auth is wired up.
-const placeholderUser = {
-  name: "Shop Staff",
-  email: "staff@laundry.local",
-}
+import { APP_NAME, mainNav } from "@/config/navigation"
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -37,13 +31,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <BranchSwitcher />
       </SidebarHeader>
       <SidebarContent>
         <NavMain groups={mainNav} />
-        <NavSecondary items={secondaryNav} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={placeholderUser} />
+        <NavUser />
       </SidebarFooter>
     </Sidebar>
   )

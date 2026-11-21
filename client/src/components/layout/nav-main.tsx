@@ -8,52 +8,43 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { newOrderItem, type NavGroup } from "@/config/navigation"
+import type { NavGroup, NavItem } from "@/config/navigation"
+import { useAuth } from "@/lib/auth/auth-context"
 
 export function NavMain({ groups }: { groups: NavGroup[] }) {
   const { pathname } = useLocation()
-  const NewOrderIcon = newOrderItem.icon
+  const { user, can } = useAuth()
+
+  const isVisible = (item: NavItem) =>
+    (!item.ownerOnly || !!user?.is_owner) && (!item.permission || can(item.permission))
 
   return (
     <>
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip={newOrderItem.title}
-                render={<NavLink to={newOrderItem.url} />}
-                className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-              >
-                <NewOrderIcon />
-                <span>{newOrderItem.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-
-      {groups.map((group, i) => (
-        <SidebarGroup key={group.label ?? i}>
-          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={pathname === item.url}
-                    render={<NavLink to={item.url} end />}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+      {groups.map((group, i) => {
+        const items = group.items.filter(isVisible)
+        if (!items.length) return null
+        return (
+          <SidebarGroup key={group.label ?? i}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {items.map((item) => (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      isActive={pathname === item.url}
+                      render={<NavLink to={item.url} end />}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )
+      })}
     </>
   )
 }
