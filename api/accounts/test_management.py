@@ -43,8 +43,7 @@ def make_role(name, codes):
 class Base(APITestCase):
     def setUp(self):
         cache.clear()  # reset the login rate limit between tests
-        # a menu a future Reports page would add; system menus (Orders, …) come from the migrations
-        make_menu('reports')
+        # system menus (Orders, Reports, …) come from the migrations
         self.owner_role = ensure_owner_role(Role, RolePermission, Permission)
         self.owner = User.objects.create_user(email='owner@shop.com', password=PASSWORD, full_name='Owner')
         UserRole.objects.create(user=self.owner, role=self.owner_role)
@@ -87,7 +86,7 @@ class SchemaRuleTests(Base):
 
     def test_system_menus_loaded(self):
         codes = set(Menu.objects.filter(code__in=SYSTEM_MENU_CODES).values_list('code', flat=True))
-        self.assertEqual(codes, {'dashboard', 'orders', 'production', 'collection', 'payments', 'shifts', 'customers', 'catalogue', 'services', 'items', 'price_lists', 'prices',
+        self.assertEqual(codes, {'dashboard', 'orders', 'production', 'collection', 'payments', 'shifts', 'reports', 'customers', 'catalogue', 'services', 'items', 'price_lists', 'prices',
                                  'upcharges', 'common_masters', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
         self.assertEqual(list(Action.objects.values_list('code', flat=True)),
                          ['create', 'edit', 'delete', 'view', 'print'])

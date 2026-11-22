@@ -43,6 +43,10 @@ SYSTEM_MENUS = [
         'router_name': 'shifts', 'router_link': '/shifts',
     },
     {
+        'code': 'reports', 'name': 'Reports', 'icon': 'file-text', 'sort_order': 11,
+        'router_name': 'reports', 'router_link': '/reports',
+    },
+    {
         'code': 'customers', 'name': 'Customers', 'icon': 'contact-round', 'sort_order': 10,
         'router_name': 'customers', 'router_link': '/customers',
     },

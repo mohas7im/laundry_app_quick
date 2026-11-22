@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'catalogue',
     'orders',
     'cashier',
+    'reports',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
