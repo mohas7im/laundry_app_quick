@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from accounts.test_management import PASSWORD, Base, make_role
 from accounts.tests import body, error_fields
+from cashier.models import Shift
 from catalogue.models import Price, PriceList, Service
 from catalogue.tests import make_item, make_upcharge
 from customers.models import Customer
@@ -67,8 +68,11 @@ class OrderFixture(Base):
         self.customer = Customer.objects.create(name='Fatima', phone='+971501234567', branch=self.dxb)
 
         self.counter = make_role('Counter', ['orders.view', 'orders.create', 'customers.view', 'production.view',
-                                             'production.edit', 'collection.view', 'collection.create'])
-        self.make_user('cashier@shop.com', roles=[(self.counter, self.dxb), (self.counter, self.shj)])
+                                             'production.edit', 'collection.view', 'collection.create',
+                                             'payments.view', 'payments.create', 'shifts.view', 'shifts.create'])
+        self.cashier_user = self.make_user('cashier@shop.com', roles=[(self.counter, self.dxb), (self.counter, self.shj)])
+        # cash needs an open shift (M6 cash-up)
+        Shift.objects.create(branch=self.dxb, opened_by=self.cashier_user, opening_float=D('100'))
         self.login(self.dxb)
 
     def login(self, branch):

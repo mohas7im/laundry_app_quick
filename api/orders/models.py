@@ -124,10 +124,23 @@ class OrderLineUpcharge(models.Model):
 
 
 class Payment(models.Model):
+    """
+    Money taken for an order, or given back (a refund: kind "refund", amount positive).
+    Points at the cashier's open shift, so the cash-up counts it (orders/payments.py).
+    """
+
+    class Kind(models.TextChoices):
+        PAYMENT = 'payment', 'Payment'
+        REFUND = 'refund', 'Refund'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments')
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.PAYMENT)
     amount = models.DecimalField(**MONEY)
     method = models.CharField(max_length=20, choices=Order.PaymentMethod.choices)
+    reason = models.CharField(max_length=200, blank=True, help_text='Why a refund was given.')
+    shift = models.ForeignKey('cashier.Shift', on_delete=models.PROTECT, null=True, blank=True,
+                              related_name='payments')
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments')
     created_at = models.DateTimeField(auto_now_add=True)
 

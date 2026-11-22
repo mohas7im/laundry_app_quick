@@ -1,5 +1,8 @@
+from decimal import Decimal
+
 from django.db.models import Prefetch, Q
-from rest_framework import mixins, status, viewsets
+from django.shortcuts import get_object_or_404
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.views import APIView
 
 from accounts.access import branch_menu_permission, branch_permission, get_active_branch, get_active_branch_id
@@ -8,7 +11,8 @@ from common.drf import ResultViewSetMixin
 from common.results import BaseResult, ErrorCode
 from masters.models import CommonMaster
 from masters.registry import DISCOUNT_TYPE, ORDER_NOTE, PAYMENT_METHOD
-from .models import Order, OrderLine, OrderStatusHistory
+from .models import Order, OrderLine, OrderStatusHistory, Payment
+from .payments import PaySerializer, RefundSerializer, SettleSerializer, outstanding_orders
 from .workflow import OPEN, CollectSerializer, MoveSerializer, active_stages
 from .serializers import (
     OrderCreateSerializer,
@@ -32,9 +36,10 @@ class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMod
     def get_queryset(self):
         lines = Prefetch('lines', queryset=OrderLine.objects.prefetch_related('upcharges'))
         history = Prefetch('history', queryset=OrderStatusHistory.objects.select_related('changed_by'))
+        payments = Prefetch('payments', queryset=Payment.objects.select_related('received_by'))
         qs = (Order.objects.filter(branch_id=get_active_branch_id(self.request))
               .select_related('customer', 'branch', 'price_list', 'created_by', 'stage')
-              .prefetch_related(lines, history))
+              .prefetch_related(lines, history, payments))
         status_filter = self.request.query_params.get('status')  # ?status=ready or ?status=received,ready
         if status_filter:
             qs = qs.filter(status__in=status_filter.split(','))
@@ -174,3 +179,114 @@ class CollectionCollectView(APIView):
         collected = serializer.save(request.user)
         numbers = ', '.join(o.number for o in collected)
         return BaseResult.ok(OrderListSerializer(collected, many=True).data, f'Collected {numbers}.').to_response()
+
+
+# ── M6: payments, refunds, customer balances ──────────────────────────────
+
+def _branch_order(request, order_id):
+    return get_object_or_404(Order, pk=order_id, branch_id=get_active_branch_id(request))
+
+
+def _order_detail(request, order_id):
+    view = OrderViewSet(request=request, format_kwarg=None)
+    return OrderSerializer(view.get_queryset().get(pk=order_id)).data
+
+
+class OrderPayView(APIView):
+    """POST /api/orders/<id>/pay/ {amount, payment_method} — take money for an order (payments.create)."""
+
+    permission_classes = [branch_permission('payments.create')]
+
+    def post(self, request, order_id):
+        order = _branch_order(request, order_id)
+        serializer = PaySerializer(data=request.data, context={'order': order})
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save(request.user)
+        return BaseResult.ok(_order_detail(request, order.pk),
+                             f'AED {payment.amount} received for {order.number}.').to_response()
+
+
+class OrderRefundView(APIView):
+    """POST /api/orders/<id>/refund/ {amount, payment_method, reason} — give money back (payments.edit)."""
+
+    permission_classes = [branch_permission('payments.edit')]
+
+    def post(self, request, order_id):
+        order = _branch_order(request, order_id)
+        serializer = RefundSerializer(data=request.data, context={'order': order})
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save(request.user)
+        return BaseResult.ok(_order_detail(request, order.pk),
+                             f'AED {payment.amount} refunded on {order.number}.').to_response()
+
+
+class PaymentListView(APIView):
+    """
+    GET /api/payments/?date=YYYY-MM-DD — payments and refunds at the active branch on one
+    day (shop time; default today), with totals per method (payments.view).
+    """
+
+    permission_classes = [branch_permission('payments.view')]
+
+    def get(self, request):
+        from datetime import date as date_type
+
+        from django.utils import timezone
+
+        raw = request.query_params.get('date')
+        try:
+            day = date_type.fromisoformat(raw) if raw else timezone.localdate()
+        except ValueError:
+            raise serializers.ValidationError({'date': 'Use a date like 2026-11-22.'})
+        payments = (Payment.objects.filter(order__branch_id=get_active_branch_id(request), created_at__date=day)
+                    .select_related('order__customer', 'received_by').order_by('-created_at'))
+        names = dict(CommonMaster.of(PAYMENT_METHOD).values_list('code', 'name'))
+        rows, totals = [], {}
+        for p in payments:
+            rows.append({
+                'id': str(p.id), 'kind': p.kind, 'amount': str(p.amount), 'method': p.method,
+                'method_name': names.get(p.method, p.method), 'reason': p.reason,
+                'order': str(p.order_id), 'order_number': p.order.number, 'customer_name': p.order.customer.name,
+                'received_by_name': p.received_by.full_name, 'created_at': p.created_at,
+            })
+            t = totals.setdefault(p.method, {'method': p.method, 'method_name': names.get(p.method, p.method),
+                                             'taken': Decimal('0'), 'refunded': Decimal('0')})
+            t['taken' if p.kind == Payment.Kind.PAYMENT else 'refunded'] += p.amount
+        for t in totals.values():
+            t['net'] = t['taken'] - t['refunded']
+            for key in ('taken', 'refunded', 'net'):
+                t[key] = str(t[key])
+        data = {'date': day.isoformat(), 'payments': rows, 'totals': sorted(totals.values(), key=lambda t: t['method'])}
+        return BaseResult.ok(data, 'Payments retrieved successfully.').to_response()
+
+
+class CustomerBalanceView(APIView):
+    """
+    GET  /api/customers/<id>/balance/ — what the customer owes: unpaid orders, oldest first (payments.view).
+    POST /api/customers/<id>/settle/  {amount, payment_method} — pay them off, oldest first (payments.create).
+    """
+
+    def get_permissions(self):
+        code = 'payments.create' if self.request.method == 'POST' else 'payments.view'
+        return [branch_permission(code)()]
+
+    def _customer(self, customer_id):
+        from customers.models import Customer
+        return get_object_or_404(Customer, pk=customer_id)
+
+    def get(self, request, customer_id):
+        customer = self._customer(customer_id)
+        orders = outstanding_orders(customer).select_related('customer', 'stage', 'branch')
+        due = sum((o.balance for o in orders), Decimal('0'))
+        data = {'customer': str(customer.id), 'customer_name': customer.name, 'balance': str(due),
+                'orders': [{**OrderListSerializer(o).data, 'branch_code': o.branch.code} for o in orders]}
+        return BaseResult.ok(data, 'Balance retrieved successfully.').to_response()
+
+    def post(self, request, customer_id):
+        customer = self._customer(customer_id)
+        serializer = SettleSerializer(data=request.data, context={'customer': customer})
+        serializer.is_valid(raise_exception=True)
+        payments = serializer.save(request.user)
+        numbers = ', '.join(p.order.number for p in payments)
+        return BaseResult.ok({'paid_orders': [str(p.order_id) for p in payments]},
+                             f'AED {serializer.validated_data["amount"]} received ({numbers}).').to_response()

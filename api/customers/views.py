@@ -1,3 +1,5 @@
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 
 from accounts.access import branch_menu_permission, get_active_branch
@@ -12,7 +14,10 @@ class CustomerViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
     (customers.view / create / edit / delete in the access token).
     """
 
-    queryset = Customer.objects.select_related('branch')
+    # balance: what the customer still owes over their orders (not cancelled)
+    queryset = Customer.objects.select_related('branch').annotate(balance=Coalesce(
+        Sum(F('orders__total') - F('orders__paid_amount'), filter=~Q(orders__status='cancelled')),
+        Value(0), output_field=DecimalField(max_digits=10, decimal_places=2)))
     serializer_class = CustomerSerializer
     permission_classes = [branch_menu_permission('customers')]
     search_fields = ['name', 'phone', 'email']

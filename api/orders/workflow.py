@@ -16,7 +16,8 @@ from rest_framework import serializers
 
 from masters.models import CommonMaster
 from masters.registry import PAYMENT_METHOD, PRODUCTION_STAGE
-from .models import Order, OrderStatusHistory, Payment
+from .models import Order, OrderStatusHistory
+from .payments import record_payment
 
 RECEIVED, READY, NEXT = 'received', 'ready', 'next'
 OPEN = (Order.Status.RECEIVED, Order.Status.READY)  # on the production board
@@ -143,8 +144,7 @@ class CollectSerializer(serializers.Serializer):
         for order in data['orders']:
             balance = order.balance
             if balance > 0 and data['payment_method'] in PAID_NOW:
-                Payment.objects.create(order=order, amount=balance, method=data['payment_method'], received_by=user)
-                order.paid_amount += balance
+                record_payment(order, balance, data['payment_method'], user)
                 order.payment_method = data['payment_method']
             elif balance > 0:
                 order.payment_method = Order.PaymentMethod.ON_ACCOUNT

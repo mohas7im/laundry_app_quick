@@ -15,13 +15,14 @@ def normalize_phone(value):
 
 class CustomerSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True, default=0)
 
     class Meta:
         model = Customer
-        fields = ['id', 'name', 'phone', 'email', 'address', 'notes', 'branch', 'branch_name',
+        fields = ['id', 'name', 'phone', 'email', 'address', 'notes', 'branch', 'branch_name', 'balance',
                   'created_at', 'updated_at']
         # branch: set from the active branch on create, never changed
-        read_only_fields = ['id', 'branch', 'branch_name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'branch', 'branch_name', 'balance', 'created_at', 'updated_at']
         # the model's unique check would run on the raw input; validate_phone checks the normalised number
         extra_kwargs = {
             'name': {'error_messages': {'blank': "Enter the customer's name.", 'required': "Enter the customer's name."}},

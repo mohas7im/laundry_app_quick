@@ -11,6 +11,7 @@ from customers.models import Customer
 from masters.models import CommonMaster
 from masters.registry import DISCOUNT_TYPE, PAYMENT_METHOD
 from .models import BranchOrderCounter, Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
+from .payments import record_payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
 
 MONEY = {'max_digits': 10, 'decimal_places': 2, 'min_value': Decimal('0')}
@@ -206,8 +207,8 @@ class OrderCreateSerializer(serializers.Serializer):
                 for u, amount in zip(line['upcharges'], result.upcharge_amounts)
             )
         if data['paid_amount'] > 0:
-            Payment.objects.create(order=order, amount=data['paid_amount'], method=data['payment_method'],
-                                   received_by=user)
+            order.paid_amount = 0  # record_payment adds it (and links the cashier's shift)
+            record_payment(order, data['paid_amount'], data['payment_method'], user)
         OrderStatusHistory.objects.create(order=order, status=Order.Status.RECEIVED, changed_by=user)
         return order
 
@@ -259,6 +260,16 @@ class OrderSerializer(OrderListSerializer):
     lines = OrderLineSerializer(many=True, read_only=True)
     payment_method_name = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
+    payments = serializers.SerializerMethodField()
+
+    def get_payments(self, order):
+        names = master_names(PAYMENT_METHOD)
+        return [
+            {'id': str(p.id), 'kind': p.kind, 'amount': str(p.amount), 'method': p.method,
+             'method_name': names.get(p.method, p.method), 'reason': p.reason,
+             'received_by_name': p.received_by.full_name, 'created_at': p.created_at}
+            for p in order.payments.all()
+        ]
 
     def get_history(self, order):
         """The timeline: every status / stage change, who and when."""
@@ -275,5 +286,5 @@ class OrderSerializer(OrderListSerializer):
         fields = OrderListSerializer.Meta.fields + [
             'branch_name', 'branch_code', 'price_list_name', 'notes', 'bag_drop_pieces', 'lines',
             'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'discount_reason', 'vat_amount',
-            'payment_method', 'payment_method_name', 'created_by_name', 'history',
+            'payment_method', 'payment_method_name', 'created_by_name', 'history', 'payments',
         ]

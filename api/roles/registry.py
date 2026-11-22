@@ -35,6 +35,14 @@ SYSTEM_MENUS = [
         'router_name': 'collection', 'router_link': '/collection',
     },
     {
+        'code': 'payments', 'name': 'Payments', 'icon': 'wallet', 'sort_order': 8,
+        'router_name': 'payments', 'router_link': '/payments',
+    },
+    {
+        'code': 'shifts', 'name': 'Cash-up', 'icon': 'credit-card', 'sort_order': 9,
+        'router_name': 'shifts', 'router_link': '/shifts',
+    },
+    {
         'code': 'customers', 'name': 'Customers', 'icon': 'contact-round', 'sort_order': 10,
         'router_name': 'customers', 'router_link': '/customers',
     },
