@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'roles',
     'customers',
     'catalogue',
+    'orders',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -125,7 +126,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Dubai'  # shop time (stored as UTC); ready-by dates use it
 
 USE_I18N = True
 
@@ -202,4 +203,13 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+
+# Orders (orders/pricing.py). Prices are VAT-inclusive.
+ORDERS = {
+    'VAT_RATE': '5',            # percent, included in every price
+    'READY_DAYS': 2,            # normal orders: ready in 2 days (plus each item's extra days)
+    'EXPRESS_READY_DAYS': 0,    # express: same day
+    'READY_TIME': '18:00',      # ready-by time of day
 }

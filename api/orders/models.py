@@ -1,0 +1,149 @@
+"""
+Orders (build pack M4):
+
+    order ─┬─ order_line ── order_line_upcharge
+           ├─ payment              (deposit or full payment at the counter; M6 adds more)
+           └─ order_status_history (who and when, for every status change)
+
+Lines keep a copy of the item/service names and prices at the time of the order,
+so later catalogue changes never change an old order.
+"""
+import uuid
+
+from django.conf import settings
+from django.db import models
+
+MONEY = {'max_digits': 10, 'decimal_places': 2}
+
+
+class Order(models.Model):
+    class Status(models.TextChoices):
+        RECEIVED = 'received', 'Received'
+        READY = 'ready', 'Ready'
+        COLLECTED = 'collected', 'Collected'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    class PaymentMethod(models.TextChoices):
+        ON_COLLECTION = 'on_collection', 'Pay on collection'
+        CASH = 'cash', 'Cash'
+        CARD = 'card', 'Card'
+        BANK = 'bank', 'Bank transfer'
+        ON_ACCOUNT = 'on_account', 'On account'
+
+    class DiscountType(models.TextChoices):
+        AMOUNT = 'amount', 'Amount'
+        PERCENT = 'percent', 'Percent'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    number = models.CharField(max_length=30, unique=True, help_text='Branch code + sequence, e.g. DXB1-00001.')
+    branch = models.ForeignKey('branches.Branch', on_delete=models.PROTECT, related_name='orders')
+    customer = models.ForeignKey('customers.Customer', on_delete=models.PROTECT, related_name='orders')
+    price_list = models.ForeignKey('catalogue.PriceList', on_delete=models.PROTECT, related_name='orders')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED)
+    is_express = models.BooleanField(default=False)
+    ready_by = models.DateTimeField()
+    notes = models.TextField(blank=True)
+    bag_drop_pieces = models.PositiveIntegerField(
+        default=0, help_text='Bag drop: pieces counted at the counter, items detailed later.')
+
+    subtotal = models.DecimalField(**MONEY)
+    discount_type = models.CharField(max_length=10, choices=DiscountType.choices, blank=True)
+    discount_value = models.DecimalField(**MONEY, default=0, help_text='The amount or percent entered.')
+    discount_amount = models.DecimalField(**MONEY, default=0)
+    discount_reason = models.CharField(max_length=200, blank=True)
+    total = models.DecimalField(**MONEY)
+    vat_amount = models.DecimalField(**MONEY, help_text='VAT included in the total.')
+    paid_amount = models.DecimalField(**MONEY, default=0)
+    payment_method = models.CharField(max_length=20, choices=PaymentMethod.choices,
+                                      default=PaymentMethod.ON_COLLECTION)
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='orders_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'orders'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['branch', '-created_at'])]
+
+    def __str__(self):
+        return self.number
+
+    @property
+    def balance(self):
+        return self.total - self.paid_amount
+
+
+class OrderLine(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='lines')
+    item = models.ForeignKey('catalogue.Item', on_delete=models.PROTECT, related_name='order_lines')
+    service = models.ForeignKey('catalogue.Service', on_delete=models.PROTECT, related_name='order_lines')
+    # copies at order time
+    item_name = models.CharField(max_length=80)
+    service_name = models.CharField(max_length=80)
+    pricing_type = models.CharField(max_length=10)
+    quantity = models.DecimalField(max_digits=8, decimal_places=3, help_text='Pieces, kg or m².')
+    unit_price = models.DecimalField(**MONEY)
+    min_price = models.DecimalField(**MONEY, null=True, blank=True)
+    upcharge_total = models.DecimalField(**MONEY, default=0)
+    line_total = models.DecimalField(**MONEY)
+    notes = models.CharField(max_length=200, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = 'order_lines'
+        ordering = ['position']
+
+    def __str__(self):
+        return f'{self.quantity} × {self.item_name} ({self.service_name})'
+
+
+class OrderLineUpcharge(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    line = models.ForeignKey(OrderLine, on_delete=models.CASCADE, related_name='upcharges')
+    upcharge = models.ForeignKey('catalogue.Upcharge', on_delete=models.PROTECT, related_name='order_lines')
+    name = models.CharField(max_length=80)
+    charge_type = models.CharField(max_length=10)
+    rate = models.DecimalField(**MONEY, help_text='The fixed amount or percent at order time.')
+    amount = models.DecimalField(**MONEY)
+
+    class Meta:
+        db_table = 'order_line_upcharges'
+
+
+class Payment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments')
+    amount = models.DecimalField(**MONEY)
+    method = models.CharField(max_length=20, choices=Order.PaymentMethod.choices)
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'payments'
+        ordering = ['created_at']
+
+
+class OrderStatusHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='history')
+    status = models.CharField(max_length=20, choices=Order.Status.choices)
+    note = models.CharField(max_length=200, blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'order_status_history'
+        ordering = ['changed_at']
+
+
+class BranchOrderCounter(models.Model):
+    """The last order number used per branch (locked while numbering a new order)."""
+
+    branch = models.OneToOneField('branches.Branch', on_delete=models.CASCADE, primary_key=True,
+                                  related_name='order_counter')
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'branch_order_counters'

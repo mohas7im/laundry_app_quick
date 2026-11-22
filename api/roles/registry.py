@@ -23,6 +23,10 @@ SYSTEM_MENUS = [
         'router_name': 'dashboard', 'router_link': '/',
     },
     {
+        'code': 'orders', 'name': 'Orders', 'icon': 'receipt', 'sort_order': 5,
+        'router_name': 'orders', 'router_link': '/orders',
+    },
+    {
         'code': 'customers', 'name': 'Customers', 'icon': 'contact-round', 'sort_order': 10,
         'router_name': 'customers', 'router_link': '/customers',
     },
