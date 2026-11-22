@@ -11,6 +11,8 @@ export interface Customer {
   /** Where the customer was registered (the active branch at the time). */
   branch: string
   branch_name: string
+  /** What the customer still owes over their orders, e.g. "21.00". */
+  balance: string
   created_at: string
   updated_at: string
 }

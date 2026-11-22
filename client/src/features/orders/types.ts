@@ -92,6 +92,18 @@ export interface OrderListRow {
   created_at: string
 }
 
+/** Money taken for an order, or given back (kind "refund"). */
+export interface OrderPayment {
+  id: string
+  kind: "payment" | "refund"
+  amount: string
+  method: string
+  method_name: string
+  reason: string
+  received_by_name: string
+  created_at: string
+}
+
 /** One change on the order's timeline. */
 export interface OrderHistoryEntry {
   status: OrderStatus
@@ -141,4 +153,5 @@ export interface Order extends OrderListRow {
   payment_method_name: string
   created_by_name: string
   history: OrderHistoryEntry[]
+  payments: OrderPayment[]
 }

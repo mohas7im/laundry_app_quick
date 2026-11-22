@@ -1,6 +1,7 @@
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 import { Link, useParams } from "react-router"
-import { ArrowLeftIcon, CircleAlertIcon, PlusIcon, PrinterIcon, ZapIcon } from "lucide-react"
+import { ArrowLeftIcon, BanknoteIcon, CircleAlertIcon, PlusIcon, PrinterIcon, Undo2Icon, ZapIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,8 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { formatMoney, shopDateFormat } from "@/lib/format"
 import { useRecords } from "@/lib/use-records"
+import { MoneyDialog } from "@/features/payments/components/money-dialog"
+import { payOrder, refundOrder } from "@/features/payments/services/payments.service"
 import { getOrder } from "../services/order.service"
 import { STATUS_LABELS, type Order } from "../types"
 
@@ -29,6 +32,8 @@ export function OrderPage() {
   const fetchOrder = useCallback(() => getOrder(id), [id])
   const order = useRecords(fetchOrder, null as Order | null)
   const { can } = useAuth()
+  const [paying, setPaying] = useState(false)
+  const [refunding, setRefunding] = useState(false)
 
   if (order.loading) {
     return (
@@ -88,7 +93,19 @@ export function OrderPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {can("payments.create") && Number(o.balance) > 0 && o.status !== "cancelled" && (
+            <Button variant="outline" onClick={() => setPaying(true)}>
+              <BanknoteIcon data-icon="inline-start" />
+              Take payment
+            </Button>
+          )}
+          {can("payments.edit") && Number(o.paid_amount) > 0 && (
+            <Button variant="outline" onClick={() => setRefunding(true)}>
+              <Undo2Icon data-icon="inline-start" />
+              Refund
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()}>
             <PrinterIcon data-icon="inline-start" />
             Print receipt
@@ -104,15 +121,74 @@ export function OrderPage() {
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Receipt order={o} />
-        <Timeline order={o} />
+        <div className="grid gap-4">
+          <Timeline order={o} />
+          {o.payments.length > 0 && <Payments order={o} />}
+        </div>
       </div>
+
+      <MoneyDialog
+        open={paying}
+        onOpenChange={setPaying}
+        title={`Take payment for ${o.number}`}
+        description={`Balance due: ${formatMoney(o.balance)}.`}
+        maxAmount={o.balance}
+        submitLabel={(amount) => `Take ${amount}`}
+        onSubmit={async (amount, method) => {
+          order.setData(await payOrder(o.id, amount, method))
+          toast.success(`${formatMoney(amount)} received for ${o.number}`)
+        }}
+      />
+      <MoneyDialog
+        open={refunding}
+        onOpenChange={setRefunding}
+        title={`Refund on ${o.number}`}
+        description={`Paid so far: ${formatMoney(o.paid_amount)}. The refund is recorded in your shift.`}
+        maxAmount={o.paid_amount}
+        withReason
+        submitLabel={(amount) => `Refund ${amount}`}
+        onSubmit={async (amount, method, reason) => {
+          order.setData(await refundOrder(o.id, amount, method, reason))
+          toast.success(`${formatMoney(amount)} refunded on ${o.number}`)
+        }}
+      />
     </div>
+  )
+}
+
+/** Money taken and given back on this order. */
+function Payments({ order: o }: { order: Order }) {
+  return (
+    <section className="rounded-lg border bg-card p-4 text-sm print:hidden" aria-label="Payments">
+      <h3 className="mb-3 font-medium">Payments</h3>
+      <ul className="grid gap-2.5">
+        {o.payments.map((p) => (
+          <li key={p.id} className="flex items-start justify-between gap-3">
+            <div className="grid">
+              <span>
+                {p.kind === "refund" ? "Refund" : "Payment"} · {p.method_name}
+              </span>
+              {p.reason && <span className="text-xs">{p.reason}</span>}
+              <span className="text-xs text-muted-foreground">
+                {longDate.format(new Date(p.created_at))} · {p.received_by_name}
+              </span>
+            </div>
+            <span className={`font-medium tabular-nums ${p.kind === "refund" ? "text-destructive" : ""}`}>
+              {p.kind === "refund" ? "− " : ""}
+              {formatMoney(p.amount)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
 /** Sized like an 80 mm thermal receipt; the only thing printed (see .print-area in index.css). */
 function Receipt({ order: o }: { order: Order }) {
   const paid = Number(o.paid_amount)
+  // how the money was actually paid (from the payments), e.g. "Cash, Card"
+  const paidWith = [...new Set(o.payments.filter((p) => p.kind === "payment").map((p) => p.method_name))].join(", ")
   const balance = Number(o.balance)
   return (
     <div className="print-area mx-auto w-full max-w-sm rounded-lg border bg-card p-5 text-sm text-card-foreground">
@@ -179,7 +255,7 @@ function Receipt({ order: o }: { order: Order }) {
         )}
         <ReceiptRow label="Total" value={formatMoney(o.total)} strong large />
         <ReceiptRow label="VAT included" value={formatMoney(o.vat_amount)} muted />
-        {paid > 0 && <ReceiptRow label={`Paid (${o.payment_method_name})`} value={formatMoney(o.paid_amount)} />}
+        {paid > 0 && <ReceiptRow label={paidWith ? `Paid (${paidWith})` : "Paid"} value={formatMoney(o.paid_amount)} />}
         <ReceiptRow
           label={balance > 0 ? "Balance due" : "Paid in full"}
           value={balance > 0 ? formatMoney(o.balance) : "✓"}

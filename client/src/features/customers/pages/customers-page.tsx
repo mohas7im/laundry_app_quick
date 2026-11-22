@@ -9,7 +9,9 @@ import { RowActionButtons } from "@/components/row-action-buttons"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
-import { shopDateFormat } from "@/lib/format"
+import { formatMoney, shopDateFormat } from "@/lib/format"
+import { MoneyDialog } from "@/features/payments/components/money-dialog"
+import { settleCustomer } from "@/features/payments/services/payments.service"
 import { deleteCustomer, getCustomers } from "../services/customer.service"
 import { CustomerFormDialog } from "../components/customer-form-dialog"
 import type { Customer } from "../types"
@@ -49,6 +51,8 @@ export function CustomersPage() {
   const { can } = useAuth()
   const canEdit = can("customers.edit")
   const canDelete = can("customers.delete")
+  const canSettle = can("payments.create")
+  const [settling, setSettling] = useState<Customer | null>(null)
 
   const [editing, setEditing] = useState<Customer | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -77,6 +81,24 @@ export function CustomersPage() {
       },
       { accessorKey: "branch_name", header: "Registered at" },
       {
+        accessorKey: "balance",
+        header: "Balance",
+        sortingFn: "alphanumeric",
+        cell: ({ row }) =>
+          Number(row.original.balance) > 0 ? (
+            <span className="flex items-center gap-2">
+              <span className="font-medium tabular-nums">Owes {formatMoney(row.original.balance)}</span>
+              {canSettle && (
+                <Button variant="outline" size="xs" onClick={() => setSettling(row.original)}>
+                  Settle
+                </Button>
+              )}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
         accessorKey: "created_at",
         header: "Added",
         sortingFn: "datetime",
@@ -102,7 +124,7 @@ export function CustomersPage() {
         ),
       },
     ],
-    [canEdit, canDelete],
+    [canEdit, canDelete, canSettle],
   )
 
   async function confirmDelete() {
@@ -150,6 +172,20 @@ export function CustomersPage() {
       />
 
       <CustomerFormDialog open={formOpen} onOpenChange={setFormOpen} customer={editing} onSaved={fetchCustomers} />
+
+      <MoneyDialog
+        open={!!settling}
+        onOpenChange={(open) => !open && setSettling(null)}
+        title={`Settle ${settling?.name ?? ""}'s balance`}
+        description={`Owes ${formatMoney(settling?.balance)} on unpaid orders. The payment goes to the oldest orders first.`}
+        maxAmount={settling?.balance ?? "0"}
+        submitLabel={(amount) => `Take ${amount}`}
+        onSubmit={async (amount, method) => {
+          await settleCustomer(settling!.id, amount, method)
+          toast.success(`${formatMoney(amount)} received from ${settling!.name}`)
+          fetchCustomers()
+        }}
+      />
 
       <ConfirmDialog
         open={!!deleting}
