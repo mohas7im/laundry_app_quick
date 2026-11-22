@@ -9,10 +9,13 @@ import { useGetBranchesQuery } from "@/features/branches/api"
 import { useGetRolesQuery } from "@/features/roles/api"
 import { useGetStaffUsersQuery } from "@/features/users/api"
 import { useAuth } from "@/lib/auth/use-auth"
+import { BusinessDashboard } from "@/features/reports/components/business-dashboard"
 
 export function DashboardPage() {
-  const { user, activeBranch } = useAuth()
+  const { user, activeBranch, can } = useAuth()
   if (!user) return null
+  // the business dashboard needs a branch (its numbers are per branch) and dashboard.view
+  const business = !!activeBranch && can("dashboard.view")
 
   return (
     <>
@@ -24,8 +27,14 @@ export function DashboardPage() {
             : "Create your first branch to get started."
         }
       />
-      <ManagementOverview />
-      <StaffOverview />
+      {business ? (
+        <BusinessDashboard />
+      ) : (
+        <>
+          <ManagementOverview />
+          <StaffOverview />
+        </>
+      )}
     </>
   )
 }

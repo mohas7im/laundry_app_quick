@@ -191,3 +191,35 @@
     color: #000;
   }
 }
+
+/* Printing a report (features/reports): only the report, on A4. */
+@page report {
+  size: A4;
+  margin: 12mm;
+}
+@media print {
+  .print-page,
+  .print-page * {
+    visibility: visible;
+  }
+  .print-page {
+    page: report;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    color: #000;
+  }
+}
+
+/* Printing: the receipt / report sits at the top-left of the paper, not beside the
+   sidebar. Their ancestors must not be positioned, or "left: 0" counts from them. */
+@media print {
+  body *:has(.print-area),
+  body *:has(.print-page) {
+    position: static !important;
+    transform: none !important;
+  }
+}

@@ -40,6 +40,8 @@ export const ENDPOINTS = {
     refund: (id: Id) => `/api/orders/${id}/refund/`,
   },
   payments: { list: "/api/payments/" },
+  dashboard: "/api/dashboard/",
+  reports: { daily: "/api/reports/daily/", ordersCsv: "/api/reports/orders.csv" },
   customerBalance: {
     balance: (id: Id) => `/api/customers/${id}/balance/`,
     settle: (id: Id) => `/api/customers/${id}/settle/`,

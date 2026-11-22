@@ -92,6 +92,15 @@ export const router = createBrowserRouter([
             ],
           },
           {
+            element: <RequirePermission permission="reports.view" />,
+            children: [
+              {
+                path: "reports",
+                lazy: lazyPage(() => import("@/features/reports/pages/reports-page"), (m) => m.ReportsPage),
+              },
+            ],
+          },
+          {
             element: <RequirePermission permission="customers.view" />,
             children: [
               {
