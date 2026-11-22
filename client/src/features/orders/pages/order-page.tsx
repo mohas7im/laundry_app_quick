@@ -52,7 +52,7 @@ export function OrderPage() {
           <Button variant="outline" size="sm" onClick={order.retry}>
             Try again
           </Button>
-          <Button variant="ghost" size="sm" render={<Link to="/orders" />}>
+          <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/orders" />}>
             Back to orders
           </Button>
         </EmptyContent>
@@ -66,7 +66,7 @@ export function OrderPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-2">
-          <Button variant="ghost" size="icon-sm" aria-label="Back to orders" render={<Link to="/orders" />}>
+          <Button variant="ghost" size="icon-sm" aria-label="Back to orders" nativeButton={false} render={<Link to="/orders" />}>
             <ArrowLeftIcon />
           </Button>
           <div>
@@ -91,7 +91,7 @@ export function OrderPage() {
             Print receipt
           </Button>
           {can("orders.create") && (
-            <Button render={<Link to="/orders/new" />}>
+            <Button nativeButton={false} render={<Link to="/orders/new" />}>
               <PlusIcon data-icon="inline-start" />
               New order
             </Button>

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react"
-import { Outlet } from "react-router"
+import { Outlet, useNavigation } from "react-router"
 import { Building2Icon } from "lucide-react"
 
 import { AppSidebar } from "@/components/layout/app-sidebar"
@@ -26,6 +26,8 @@ function NoBranchAssigned() {
 
 export function AppLayout() {
   const { user, activeBranch } = useAuth()
+  // a lazy page is downloading: keep the current page and show a thin bar at the top
+  const loadingPage = useNavigation().state === "loading"
 
   // Staff need a branch to work in; users with organization-wide roles (e.g. the owner
   // before any branch exists) can still reach the admin pages.
@@ -40,6 +42,9 @@ export function AppLayout() {
         } as CSSProperties
       }
     >
+      {loadingPage && (
+        <div role="progressbar" aria-label="Loading page" className="fixed inset-x-0 top-0 z-50 h-0.5 animate-pulse bg-primary" />
+      )}
       <AppSidebar variant="inset" />
       <SidebarInset className="min-w-0">
         <SiteHeader />

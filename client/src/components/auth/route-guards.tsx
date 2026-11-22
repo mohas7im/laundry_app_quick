@@ -4,7 +4,8 @@ import { Navigate, Outlet, useLocation } from "react-router"
 import { useAuth } from "@/lib/auth/use-auth"
 import { LOGIN_PATH } from "@/lib/auth/session"
 
-function FullPageSpinner() {
+/** App start and the first load of a lazy page. */
+export function FullPageSpinner() {
   return (
     <div className="flex min-h-svh items-center justify-center">
       <LoaderIcon className="size-6 animate-spin text-muted-foreground" aria-label="Loading" />

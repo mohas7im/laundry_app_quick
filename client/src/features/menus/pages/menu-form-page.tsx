@@ -123,7 +123,7 @@ function MenuForm({ menu }: { menu?: Menu }) {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex items-start gap-2">
-        <Button variant="ghost" size="icon-sm" aria-label="Back to menus" render={<Link to="/menus" />}>
+        <Button variant="ghost" size="icon-sm" aria-label="Back to menus" nativeButton={false} render={<Link to="/menus" />}>
           <ArrowLeftIcon />
         </Button>
         <div>
@@ -226,7 +226,7 @@ function MenuForm({ menu }: { menu?: Menu }) {
             </FieldGroup>
           </CardContent>
           <CardFooter className="justify-end gap-2 border-t">
-            <Button type="button" variant="outline" render={<Link to="/menus" />}>
+            <Button variant="outline" nativeButton={false} render={<Link to="/menus" />}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>

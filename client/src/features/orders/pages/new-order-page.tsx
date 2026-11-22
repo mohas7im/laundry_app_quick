@@ -627,7 +627,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
             {submitting && <Spinner data-icon="inline-start" />}
             Create order · {formatMoney(fromCents(totals.total))}
           </Button>
-          <Button variant="ghost" size="sm" render={<Link to="/orders" />}>
+          <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/orders" />}>
             Cancel
           </Button>
         </CardFooter>

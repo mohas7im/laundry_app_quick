@@ -147,7 +147,7 @@ export function PricesPage() {
             <Button
               variant="outline"
               size="sm"
-              render={<Link to="/price-lists" />}
+              nativeButton={false} render={<Link to="/price-lists" />}
             >
               Go to Price Lists
             </Button>
@@ -338,13 +338,13 @@ function PriceGridEditor({
               <Button
                 variant="outline"
                 size="sm"
-                render={<Link to="/services" />}
+                nativeButton={false} render={<Link to="/services" />}
               >
                 Go to Services
               </Button>
             )}
             {!grid.data.items.length && (
-              <Button variant="outline" size="sm" render={<Link to="/items" />}>
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/items" />}>
                 Go to Items
               </Button>
             )}
