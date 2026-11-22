@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -91,8 +92,31 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+def database_from_url(url):
+    """
+    DATABASE_URL (e.g. Neon): postgresql://user:password@host/dbname?sslmode=require&channel_binding=require
+    Query parameters go to the driver as connection options.
+    """
+    parts = urlparse(url)
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': parts.path.lstrip('/'),
+        'USER': unquote(parts.username or ''),
+        'PASSWORD': unquote(parts.password or ''),
+        'HOST': parts.hostname,
+        'PORT': str(parts.port or 5432),
+        'OPTIONS': dict(parse_qsl(parts.query)),
+        # through a connection pooler (Neon "-pooler" host): no server-side cursors,
+        # and reuse connections for a minute instead of opening one per request
+        'DISABLE_SERVER_SIDE_CURSORS': True,
+        'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
+    }
+
+
+# DATABASE_URL wins (the cloud database); without it, the local DB_* settings.
 DATABASES = {
-    'default': {
+    'default': database_from_url(os.environ['DATABASE_URL']) if os.getenv('DATABASE_URL') else {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'laundry_db'),
         'USER': os.getenv('DB_USER', 'postgres'),
