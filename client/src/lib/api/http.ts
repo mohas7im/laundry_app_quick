@@ -12,6 +12,15 @@ import type { AxiosRequestConfig, AxiosResponse } from "axios"
 
 import { apiClient } from "./client"
 
+/** A page from a list API asked with page_number / page_size (common/pagination.py). */
+export type Page<TItem> = {
+  items: TItem[]
+  page_number: number
+  page_size: number
+  total_count: number
+  total_pages: number
+}
+
 type Body<TData> = { success: boolean; message: string; data: TData }
 
 const unwrap = <TData>(response: AxiosResponse<Body<TData>>) => response.data.data

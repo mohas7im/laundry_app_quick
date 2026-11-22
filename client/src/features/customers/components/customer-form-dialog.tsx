@@ -25,7 +25,7 @@ type Props = {
   onOpenChange: (open: boolean) => void
   customer?: Customer | null
   /** Called after a successful save (the list isn't cached, so the page refetches it). */
-  onSaved?: () => void
+  onSaved?: (customer: Customer) => void
 }
 
 export function CustomerFormDialog({ open, onOpenChange, customer, onSaved }: Props) {
@@ -53,7 +53,7 @@ function CustomerForm({
 }: {
   customer?: Customer | null
   onDone: () => void
-  onSaved?: () => void
+  onSaved?: (customer: Customer) => void
 }) {
   const [saving, setSaving] = useState(false)
   const [values, setValues] = useState<CustomerRequest>(() => {
@@ -72,10 +72,9 @@ function CustomerForm({
     setSaving(true)
     setErrors({})
     try {
-      if (customer) await updateCustomer(customer.id, values)
-      else await createCustomer(values)
+      const saved = customer ? await updateCustomer(customer.id, values) : await createCustomer(values)
       toast.success(customer ? "Customer updated" : "Customer added")
-      onSaved?.()
+      onSaved?.(saved)
       onDone()
     } catch (err) {
       const fieldErrors = getApiFieldErrors(err)

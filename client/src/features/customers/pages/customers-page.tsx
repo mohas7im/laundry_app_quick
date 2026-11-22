@@ -9,11 +9,12 @@ import { RowActionButtons } from "@/components/row-action-buttons"
 import { Button } from "@/components/ui/button"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
+import { shopDateFormat } from "@/lib/format"
 import { deleteCustomer, getCustomers } from "../services/customer.service"
 import { CustomerFormDialog } from "../components/customer-form-dialog"
 import type { Customer } from "../types"
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" })
+const dateFormat = shopDateFormat({ day: "numeric", month: "short", year: "numeric" })
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])

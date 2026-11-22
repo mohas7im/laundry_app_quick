@@ -10,6 +10,9 @@ import { PricesPage } from "@/features/catalogue/pages/prices-page"
 import { ServicesPage } from "@/features/catalogue/pages/services-page"
 import { UpchargesPage } from "@/features/catalogue/pages/upcharges-page"
 import { CustomersPage } from "@/features/customers/pages/customers-page"
+import { NewOrderPage } from "@/features/orders/pages/new-order-page"
+import { OrderPage } from "@/features/orders/pages/order-page"
+import { OrdersPage } from "@/features/orders/pages/orders-page"
 import { DashboardPage } from "@/features/dashboard/pages/dashboard-page"
 import { MenuFormPage } from "@/features/menus/pages/menu-form-page"
 import { MenusPage } from "@/features/menus/pages/menus-page"
@@ -32,6 +35,17 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          {
+            element: <RequirePermission permission="orders.view" />,
+            children: [
+              { path: "orders", element: <OrdersPage /> },
+              { path: "orders/:id", element: <OrderPage /> },
+            ],
+          },
+          {
+            element: <RequirePermission permission="orders.create" />,
+            children: [{ path: "orders/new", element: <NewOrderPage /> }],
+          },
           {
             element: <RequirePermission permission="customers.view" />,
             children: [{ path: "customers", element: <CustomersPage /> }],

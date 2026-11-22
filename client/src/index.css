@@ -166,3 +166,28 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Printing an order: only its receipt, on 80 mm thermal paper (see features/orders/pages/order-page.tsx). */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 3mm;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 74mm;
+    max-width: none;
+    border: 0;
+    padding: 0;
+    color: #000;
+  }
+}
