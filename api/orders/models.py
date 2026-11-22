@@ -7,6 +7,12 @@ Orders (build pack M4):
 
 Lines keep a copy of the item/service names and prices at the time of the order,
 so later catalogue changes never change an old order.
+
+Life of an order (M5):
+
+    received ── stage: washing → ironing → packing … (PRODUCTION_STAGE common master)
+        │
+      ready  (rack) ── collected (balance paid, or on account)
 """
 import uuid
 
@@ -40,6 +46,11 @@ class Order(models.Model):
     customer = models.ForeignKey('customers.Customer', on_delete=models.PROTECT, related_name='orders')
     price_list = models.ForeignKey('catalogue.PriceList', on_delete=models.PROTECT, related_name='orders')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED)
+    stage = models.ForeignKey('masters.CommonMaster', on_delete=models.PROTECT, null=True, blank=True,
+                              related_name='+', limit_choices_to={'type__code': 'PRODUCTION_STAGE'},
+                              help_text='Where a received order is in the workshop; empty = not started.')
+    rack = models.CharField(max_length=30, blank=True, help_text='Where a ready order is kept, e.g. B-12.')
+    collected_at = models.DateTimeField(null=True, blank=True)
     is_express = models.BooleanField(default=False)
     ready_by = models.DateTimeField()
     notes = models.TextField(blank=True)
@@ -64,7 +75,7 @@ class Order(models.Model):
     class Meta:
         db_table = 'orders'
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['branch', '-created_at'])]
+        indexes = [models.Index(fields=['branch', '-created_at']), models.Index(fields=['branch', 'status'])]
 
     def __str__(self):
         return self.number
@@ -129,6 +140,7 @@ class OrderStatusHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='history')
     status = models.CharField(max_length=20, choices=Order.Status.choices)
+    stage_name = models.CharField(max_length=80, blank=True, help_text='The production stage, if any (a copy).')
     note = models.CharField(max_length=200, blank=True)
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
     changed_at = models.DateTimeField(auto_now_add=True)

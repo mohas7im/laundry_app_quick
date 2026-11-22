@@ -48,7 +48,9 @@ class PricingRuleTests(SimpleTestCase):
                          datetime(2026, 11, 23, 18, 0, tzinfo=DUBAI))  # too late today: tomorrow
 
 
-class OrderApiTests(Base):
+class OrderFixture(Base):
+    """A priced catalogue, a customer and a counter user logged in at Dubai Marina."""
+
     def setUp(self):
         super().setUp()
         self.dry = Service.objects.create(name='Dry Clean', sort_order=1)
@@ -64,7 +66,8 @@ class OrderApiTests(Base):
         self.stain = make_upcharge('Stain removal', D('5'))
         self.customer = Customer.objects.create(name='Fatima', phone='+971501234567', branch=self.dxb)
 
-        self.counter = make_role('Counter', ['orders.view', 'orders.create', 'customers.view'])
+        self.counter = make_role('Counter', ['orders.view', 'orders.create', 'customers.view', 'production.view',
+                                             'production.edit', 'collection.view', 'collection.create'])
         self.make_user('cashier@shop.com', roles=[(self.counter, self.dxb), (self.counter, self.shj)])
         self.login(self.dxb)
 
@@ -84,6 +87,9 @@ class OrderApiTests(Base):
         }
         data.update(overrides)
         return self.client.post('/api/orders/', data, format='json')
+
+
+class OrderApiTests(OrderFixture):
 
     def test_create_order(self):
         res = self.order(notes='No starch', payment_method='cash', paid_amount='20')

@@ -15,7 +15,7 @@ class CommonMasterApiTests(Base):
     def test_lists_come_from_the_migration(self):
         types = {t['code']: t for t in body(self.client.get('/api/common-master-types/'))}
         self.assertEqual(set(types), {'ITEM_CATEGORY', 'PRICING_TYPE', 'UPCHARGE_TYPE', 'DISCOUNT_TYPE',
-                                      'PAYMENT_METHOD', 'ORDER_NOTE'})
+                                      'PAYMENT_METHOD', 'ORDER_NOTE', 'PRODUCTION_STAGE'})
         self.assertFalse(types['ITEM_CATEGORY']['is_fixed'])
         self.assertTrue(types['PRICING_TYPE']['is_fixed'])
         self.assertEqual(self.values('PRICING_TYPE'), ['unit', 'per_kg', 'per_m2'])

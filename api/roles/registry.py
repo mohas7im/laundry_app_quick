@@ -27,6 +27,14 @@ SYSTEM_MENUS = [
         'router_name': 'orders', 'router_link': '/orders',
     },
     {
+        'code': 'production', 'name': 'Production', 'icon': 'washing-machine', 'sort_order': 6,
+        'router_name': 'production', 'router_link': '/production',
+    },
+    {
+        'code': 'collection', 'name': 'Collection', 'icon': 'package-check', 'sort_order': 7,
+        'router_name': 'collection', 'router_link': '/collection',
+    },
+    {
         'code': 'customers', 'name': 'Customers', 'icon': 'contact-round', 'sort_order': 10,
         'router_name': 'customers', 'router_link': '/customers',
     },

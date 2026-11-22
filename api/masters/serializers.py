@@ -3,7 +3,7 @@ import re
 from rest_framework import serializers
 
 from .models import CommonMaster, CommonMasterType
-from .registry import FIXED_TYPES
+from .registry import FIXED_TYPES, PRODUCTION_STAGE, RESERVED_STAGE_CODES
 
 
 class CommonMasterTypeSerializer(serializers.ModelSerializer):
@@ -70,6 +70,9 @@ class CommonMasterSerializer(serializers.ModelSerializer):
             code = code_from(attrs.get('code') or attrs.get('name', ''))
             if not code:
                 raise serializers.ValidationError({'name': 'Use at least one letter or number in the name.'})
+            if master_type.code == PRODUCTION_STAGE and code in RESERVED_STAGE_CODES:
+                raise serializers.ValidationError(
+                    {'name': f'"{attrs["name"]}" is already a column of the production board.'})
             if CommonMaster.objects.filter(type=master_type, code=code).exists():
                 raise serializers.ValidationError({'code': f'"{code}" is already used in {master_type.name}.'},
                                                   code='unique')

@@ -16,6 +16,7 @@ UPCHARGE_TYPE = 'UPCHARGE_TYPE'
 DISCOUNT_TYPE = 'DISCOUNT_TYPE'
 PAYMENT_METHOD = 'PAYMENT_METHOD'
 ORDER_NOTE = 'ORDER_NOTE'
+PRODUCTION_STAGE = 'PRODUCTION_STAGE'
 
 MASTER_TYPES = {
     ITEM_CATEGORY: {
@@ -45,6 +46,11 @@ MASTER_TYPES = {
         'values': [('on_collection', 'Pay on collection'), ('cash', 'Cash'), ('card', 'Card'),
                    ('bank', 'Bank transfer'), ('on_account', 'On account')],
     },
+    PRODUCTION_STAGE: {
+        'name': 'Production stage', 'fixed': False,
+        'description': 'The workshop steps between Received and Ready, in order.',
+        'values': [('washing', 'Washing'), ('ironing', 'Ironing'), ('packing', 'Packing')],
+    },
     ORDER_NOTE: {
         'name': 'Order note', 'fixed': False,
         'description': 'Quick notes the counter adds to an order with one tap.',
@@ -52,5 +58,8 @@ MASTER_TYPES = {
                    ('on_hanger', 'On hanger'), ('folded', 'Folded')],
     },
 }
+
+# Production stage codes can't be these: the board uses them for its first and last columns.
+RESERVED_STAGE_CODES = frozenset({'received', 'ready', 'collected', 'cancelled'})
 
 FIXED_TYPES = frozenset(code for code, spec in MASTER_TYPES.items() if spec['fixed'])

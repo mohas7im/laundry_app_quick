@@ -232,14 +232,17 @@ class OrderLineSerializer(serializers.ModelSerializer):
 
 class OrderListSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.name', read_only=True)
+    stage = serializers.SlugRelatedField(slug_field='code', read_only=True)
+    stage_name = serializers.CharField(source='stage.name', read_only=True, default='')
     customer_phone = serializers.CharField(source='customer.phone', read_only=True)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     pieces = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
-        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'status', 'is_express', 'ready_by',
-                  'pieces', 'total', 'paid_amount', 'balance', 'created_at']
+        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'status', 'stage', 'stage_name',
+                  'rack', 'is_express', 'ready_by', 'pieces', 'total', 'paid_amount', 'balance', 'collected_at',
+                  'created_at']
 
     def get_pieces(self, order):
         """Pieces handed in: unit items counted, kg/m² lines count as one bag; bag drop adds its count."""
@@ -255,6 +258,15 @@ class OrderSerializer(OrderListSerializer):
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     lines = OrderLineSerializer(many=True, read_only=True)
     payment_method_name = serializers.SerializerMethodField()
+    history = serializers.SerializerMethodField()
+
+    def get_history(self, order):
+        """The timeline: every status / stage change, who and when."""
+        return [
+            {'status': h.status, 'stage_name': h.stage_name, 'note': h.note,
+             'changed_by_name': h.changed_by.full_name, 'changed_at': h.changed_at}
+            for h in order.history.all()
+        ]
 
     def get_payment_method_name(self, order):
         return master_names(PAYMENT_METHOD).get(order.payment_method, order.payment_method)
@@ -263,5 +275,5 @@ class OrderSerializer(OrderListSerializer):
         fields = OrderListSerializer.Meta.fields + [
             'branch_name', 'branch_code', 'price_list_name', 'notes', 'bag_drop_pieces', 'lines',
             'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'discount_reason', 'vat_amount',
-            'payment_method', 'payment_method_name', 'created_by_name',
+            'payment_method', 'payment_method_name', 'created_by_name', 'history',
         ]
