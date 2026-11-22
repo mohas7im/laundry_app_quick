@@ -13,6 +13,8 @@ import { formatMoney, shopDateFormat } from "@/lib/format"
 import { useRecords } from "@/lib/use-records"
 import { MoneyDialog } from "@/features/payments/components/money-dialog"
 import { payOrder, refundOrder } from "@/features/payments/services/payments.service"
+import { getCompanySettings } from "@/features/company/services/company.service"
+import type { CompanySettings } from "@/features/company/types"
 import { getOrder } from "../services/order.service"
 import { STATUS_LABELS, type Order } from "../types"
 
@@ -31,6 +33,8 @@ export function OrderPage() {
   const { id = "" } = useParams()
   const fetchOrder = useCallback(() => getOrder(id), [id])
   const order = useRecords(fetchOrder, null as Order | null)
+  // the business's name, logo, contact details and terms for the receipt
+  const company = useRecords(getCompanySettings, null as CompanySettings | null)
   const { can } = useAuth()
   const [paying, setPaying] = useState(false)
   const [refunding, setRefunding] = useState(false)
@@ -120,7 +124,7 @@ export function OrderPage() {
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Receipt order={o} />
+        <Receipt order={o} company={company.data} />
         <div className="grid gap-4">
           <Timeline order={o} />
           {o.payments.length > 0 && <Payments order={o} />}
@@ -185,15 +189,21 @@ function Payments({ order: o }: { order: Order }) {
 }
 
 /** Sized like an 80 mm thermal receipt; the only thing printed (see .print-area in index.css). */
-function Receipt({ order: o }: { order: Order }) {
+function Receipt({ order: o, company }: { order: Order; company: CompanySettings | null }) {
   const paid = Number(o.paid_amount)
   // how the money was actually paid (from the payments), e.g. "Cash, Card"
   const paidWith = [...new Set(o.payments.filter((p) => p.kind === "payment").map((p) => p.method_name))].join(", ")
   const balance = Number(o.balance)
   return (
     <div className="print-area mx-auto w-full max-w-sm rounded-lg border bg-card p-5 text-sm text-card-foreground">
-      <div className="text-center">
-        <div className="text-base font-semibold">{o.branch_name}</div>
+      <div className="grid gap-1 text-center">
+        {company?.logo && <img src={company.logo} alt="" className="mx-auto max-h-16 max-w-[60%] object-contain" />}
+        <div className="text-base font-semibold">{company?.name || o.branch_name}</div>
+        {company?.name && <div className="text-xs">{o.branch_name}</div>}
+        {company?.address && <div className="text-xs whitespace-pre-line text-muted-foreground">{company.address}</div>}
+        {(company?.phone || company?.email) && (
+          <div className="text-xs text-muted-foreground">{[company.phone, company.email].filter(Boolean).join(" · ")}</div>
+        )}
         <div className="text-xs text-muted-foreground">Prices include VAT</div>
       </div>
 
@@ -280,6 +290,11 @@ function Receipt({ order: o }: { order: Order }) {
       <div className="text-center text-xs text-muted-foreground">
         {o.pieces} {o.pieces === 1 ? "piece" : "pieces"} · Please bring this receipt to collect.
       </div>
+      {company?.receipt_footer && (
+        <div className="mt-2 text-center text-[11px] leading-snug whitespace-pre-line text-muted-foreground">
+          {company.receipt_footer}
+        </div>
+      )}
     </div>
   )
 }

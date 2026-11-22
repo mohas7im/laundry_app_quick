@@ -41,6 +41,7 @@ export const ENDPOINTS = {
   },
   payments: { list: "/api/payments/" },
   dashboard: "/api/dashboard/",
+  company: "/api/company/",
   reports: { daily: "/api/reports/daily/", ordersCsv: "/api/reports/orders.csv" },
   customerBalance: {
     balance: (id: Id) => `/api/customers/${id}/balance/`,
