@@ -20,13 +20,13 @@ import type { CompanySettings, CompanySettingsRequest } from "../types"
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"]
 const LOGO_MAX_BYTES = 300 * 1024
 
-/** Administration → Company Settings: the business's name, logo, contact details and receipt terms. */
+/** Administration → Configuration: the business's name, logo, contact details and receipt terms. */
 export function CompanySettingsPage() {
   const settings = useRecords(getCompanySettings, null as CompanySettings | null)
 
   return (
     <>
-      <PageHeader title="Company Settings" description="Your business details. They print on every receipt." />
+      <PageHeader title="Configuration" description="Your business details. They print on every receipt." />
       {settings.loading ? (
         <div className="flex h-40 items-center justify-center gap-2 text-muted-foreground">
           <Spinner />
@@ -100,7 +100,7 @@ function CompanyForm({ saved, onSaved }: { saved: CompanySettings; onSaved: (s: 
       <form onSubmit={handleSubmit} noValidate className="grid gap-4">
         {readOnly && (
           <Alert>
-            <AlertDescription>You can see the company settings but not change them.</AlertDescription>
+            <AlertDescription>You can see the configuration but not change it.</AlertDescription>
           </Alert>
         )}
 

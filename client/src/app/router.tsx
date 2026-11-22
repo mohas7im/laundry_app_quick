@@ -157,7 +157,7 @@ export const router = createBrowserRouter([
             element: <RequirePermission permission="company.view" />,
             children: [
               {
-                path: "company",
+                path: "configuration",
                 lazy: lazyPage(() => import("@/features/company/pages/company-settings-page"), (m) => m.CompanySettingsPage),
               },
             ],
