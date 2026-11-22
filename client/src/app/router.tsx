@@ -56,6 +56,24 @@ export const router = createBrowserRouter([
             ],
           },
           {
+            element: <RequirePermission permission="production.view" />,
+            children: [
+              {
+                path: "production",
+                lazy: lazyPage(() => import("@/features/orders/pages/production-page"), (m) => m.ProductionPage),
+              },
+            ],
+          },
+          {
+            element: <RequirePermission permission="collection.view" />,
+            children: [
+              {
+                path: "collection",
+                lazy: lazyPage(() => import("@/features/orders/pages/collection-page"), (m) => m.CollectionPage),
+              },
+            ],
+          },
+          {
             element: <RequirePermission permission="customers.view" />,
             children: [
               {

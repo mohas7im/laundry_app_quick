@@ -36,6 +36,8 @@ export const ENDPOINTS = {
   customers: crud("/api/customers"),
   orders: crud("/api/orders"),
   pos: { catalogue: "/api/pos/catalogue/" },
+  production: { board: "/api/production/", move: "/api/production/move/" },
+  collection: { list: "/api/collection/", collect: "/api/collection/collect/" },
   // catalogue & pricing
   services: crud("/api/services"),
   items: crud("/api/items"),

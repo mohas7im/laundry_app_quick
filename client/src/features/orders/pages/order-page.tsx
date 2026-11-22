@@ -72,7 +72,10 @@ export function OrderPage() {
           <div>
             <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
               Order {o.number}
-              <Badge variant="outline">{STATUS_LABELS[o.status]}</Badge>
+              <Badge variant="outline">
+                {o.status === "received" && o.stage_name ? o.stage_name : STATUS_LABELS[o.status]}
+              </Badge>
+              {o.rack && <Badge variant="secondary">Rack {o.rack}</Badge>}
               {o.is_express && (
                 <Badge>
                   <ZapIcon data-icon="inline-start" />
@@ -99,7 +102,10 @@ export function OrderPage() {
         </div>
       </div>
 
-      <Receipt order={o} />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Receipt order={o} />
+        <Timeline order={o} />
+      </div>
     </div>
   )
 }
@@ -199,6 +205,35 @@ function Receipt({ order: o }: { order: Order }) {
         {o.pieces} {o.pieces === 1 ? "piece" : "pieces"} · Please bring this receipt to collect.
       </div>
     </div>
+  )
+}
+
+/** Every step of the order: taken, each production stage, ready, collected; who and when. */
+function Timeline({ order: o }: { order: Order }) {
+  return (
+    <section className="rounded-lg border bg-card p-4 text-sm print:hidden" aria-label="Order timeline">
+      <h3 className="mb-3 font-medium">Timeline</h3>
+      <ol className="grid gap-3">
+        {o.history.map((step, i) => (
+          <li key={i} className="relative grid gap-0.5 border-l pl-4">
+            <span className="absolute top-1.5 -left-[5px] size-2.5 rounded-full bg-primary" aria-hidden />
+            <span className="font-medium">
+              {i === 0
+                ? "Order taken"
+                : step.status === "received" && step.stage_name
+                  ? step.stage_name
+                  : step.status === "received"
+                    ? "Back to Received"
+                    : STATUS_LABELS[step.status]}
+            </span>
+            {step.note && <span className="text-xs">{step.note}</span>}
+            <span className="text-xs text-muted-foreground">
+              {longDate.format(new Date(step.changed_at))} · {step.changed_by_name}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 

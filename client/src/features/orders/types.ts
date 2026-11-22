@@ -77,14 +77,38 @@ export interface OrderListRow {
   customer_name: string
   customer_phone: string
   status: OrderStatus
+  /** PRODUCTION_STAGE code while in the workshop; null = not started (or ready). */
+  stage: string | null
+  stage_name: string
+  /** Where a ready order is kept, e.g. "B-12". */
+  rack: string
   is_express: boolean
   ready_by: string
   pieces: number
   total: string
   paid_amount: string
   balance: string
+  collected_at: string | null
   created_at: string
 }
+
+/** One change on the order's timeline. */
+export interface OrderHistoryEntry {
+  status: OrderStatus
+  stage_name: string
+  note: string
+  changed_by_name: string
+  changed_at: string
+}
+
+/** GET /api/production/ — stage columns between Received and Ready, and the open orders. */
+export interface ProductionBoard {
+  stages: { code: string; name: string }[]
+  orders: OrderListRow[]
+}
+
+/** Where a move sends orders: "received", a stage code, "ready", or "next" (each order's next column). */
+export type MoveTarget = string
 
 export interface OrderLine {
   id: string
@@ -116,4 +140,5 @@ export interface Order extends OrderListRow {
   payment_method: PaymentMethod
   payment_method_name: string
   created_by_name: string
+  history: OrderHistoryEntry[]
 }
