@@ -9,6 +9,7 @@ urlpatterns = [
     path('api/', include('roles.urls')),       # /api/roles/, /api/permissions/
     path('api/', include('customers.urls')),   # /api/customers/
     path('api/', include('masters.urls')),     # /api/common-masters/, /api/common-master-types/
+    path('api/', include('company.urls')),     # /api/company/
     path('api/', include('reports.urls')),     # /api/dashboard/, /api/reports/…
     path('api/', include('cashier.urls')),     # /api/shifts/
     path('api/', include('orders.urls')),      # /api/orders/, /api/pos/catalogue/

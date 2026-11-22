@@ -87,7 +87,7 @@ class SchemaRuleTests(Base):
     def test_system_menus_loaded(self):
         codes = set(Menu.objects.filter(code__in=SYSTEM_MENU_CODES).values_list('code', flat=True))
         self.assertEqual(codes, {'dashboard', 'orders', 'production', 'collection', 'payments', 'shifts', 'reports', 'customers', 'catalogue', 'services', 'items', 'price_lists', 'prices',
-                                 'upcharges', 'common_masters', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
+                                 'upcharges', 'common_masters', 'company', 'administration', 'branches', 'roles', 'permissions', 'users', 'menus'})
         self.assertEqual(list(Action.objects.values_list('code', flat=True)),
                          ['create', 'edit', 'delete', 'view', 'print'])
         self.assertEqual(Permission.objects.filter(menu__code='branches').count(), 5)

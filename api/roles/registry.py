@@ -78,6 +78,10 @@ SYSTEM_MENUS = [
         'is_header': True,
     },
     {
+        'code': 'company', 'name': 'Company Settings', 'icon': 'cog', 'sort_order': 0, 'parent': 'administration',
+        'router_name': 'company', 'router_link': '/company',
+    },
+    {
         'code': 'branches', 'name': 'Branches', 'icon': 'building-2', 'sort_order': 1, 'parent': 'administration',
         'router_name': 'branches', 'router_link': '/branches',
     },
