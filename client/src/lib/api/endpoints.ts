@@ -42,4 +42,7 @@ export const ENDPOINTS = {
   priceLists: crud("/api/price-lists"),
   prices: { grid: (priceListId: Id) => `/api/prices/${priceListId}/` },
   upcharges: crud("/api/upcharges"),
+  // lookup lists (common masters)
+  commonMasterTypes: crud("/api/common-master-types"),
+  commonMasters: crud("/api/common-masters"),
 } as const

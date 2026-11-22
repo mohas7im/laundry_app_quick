@@ -17,18 +17,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
+import { MASTER } from "@/features/masters/types"
+import { useMasters } from "@/features/masters/use-masters"
 import { createItem, updateItem } from "../services/catalogue.service"
-import {
-  CATEGORY_LABELS,
-  PRICING_TYPE_LABELS,
-  type Item,
-  type ItemCategory,
-  type ItemRequest,
-  type PricingType,
-} from "../types"
-
-const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label }))
-const PRICING_OPTIONS = Object.entries(PRICING_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+import type { Item, ItemRequest, PricingType } from "../types"
 
 const PRICING_HINTS: Record<PricingType, string> = {
   unit: "Priced per piece, e.g. a shirt.",
@@ -63,8 +55,11 @@ function ItemForm({ item, onSaved, onDone }: { item?: Item | null; onSaved: () =
           sort_order: item.sort_order,
           is_active: item.is_active,
         }
-      : { name: "", category: "men", pricing_type: "unit", sort_order: 0, is_active: true },
+      : { name: "", category: "other", pricing_type: "unit", sort_order: 0, is_active: true },
   )
+  // dropdowns from Common Masters (keep the item's current value even if it was hidden since)
+  const categories = useMasters(MASTER.ITEM_CATEGORY, item?.category)
+  const pricingTypes = useMasters(MASTER.PRICING_TYPE, item?.pricing_type)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -121,8 +116,8 @@ function ItemForm({ item, onSaved, onDone }: { item?: Item | null; onSaved: () =
               id={f.id}
               aria-invalid={f["aria-invalid"]}
               value={values.category}
-              options={CATEGORY_OPTIONS}
-              onValueChange={(v) => v && set("category", v as ItemCategory)}
+              options={categories.options}
+              onValueChange={(v) => v && set("category", v)}
             />
           )}
         </FormField>
@@ -132,7 +127,7 @@ function ItemForm({ item, onSaved, onDone }: { item?: Item | null; onSaved: () =
               id={f.id}
               aria-invalid={f["aria-invalid"]}
               value={values.pricing_type}
-              options={PRICING_OPTIONS}
+              options={pricingTypes.options}
               onValueChange={(v) => v && set("pricing_type", v as PricingType)}
             />
           )}

@@ -13,7 +13,7 @@ import { useRecords } from "@/lib/use-records"
 import { ActiveBadge } from "../components/active-badge"
 import { ItemFormDialog } from "../components/item-form-dialog"
 import { deleteItem, getItems } from "../services/catalogue.service"
-import { CATEGORY_LABELS, PRICING_TYPE_LABELS, type Item } from "../types"
+import type { Item } from "../types"
 
 export function ItemsPage() {
   const items = useRecords(getItems, [] as Item[])
@@ -29,8 +29,8 @@ export function ItemsPage() {
   const columns = useMemo<DataTableColumn<Item>[]>(
     () => [
       { accessorKey: "name", header: "Item", cell: ({ getValue }) => <span className="font-medium">{getValue()}</span> },
-      { accessorKey: "category", header: "Category", cell: ({ row }) => CATEGORY_LABELS[row.original.category] },
-      { accessorKey: "pricing_type", header: "Charged", cell: ({ row }) => PRICING_TYPE_LABELS[row.original.pricing_type] },
+      { accessorKey: "category_name", header: "Category" },
+      { accessorKey: "pricing_type_name", header: "Charged" },
       { accessorKey: "sort_order", header: "Sequence" },
       { accessorKey: "is_active", header: "Status", cell: ({ row }) => <ActiveBadge active={row.original.is_active} /> },
       {

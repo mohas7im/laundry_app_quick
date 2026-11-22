@@ -34,7 +34,6 @@ import { fromCents, lineTotal, orderTotals, suggestedReadyBy, toCents } from "..
 import { createOrder, getPosCatalogue } from "../services/order.service"
 import {
   PAID_NOW,
-  PAYMENT_METHOD_LABELS,
   type DiscountType,
   type OrderRequest,
   type PaymentMethod,
@@ -45,15 +44,6 @@ type CartLine = { key: string; item: string; service: string; quantity: string; 
 
 const UNIT_SUFFIX = { unit: "", per_kg: "kg", per_m2: "m²" } as const
 
-/** Quick notes the counter adds with one tap (build pack: nesha / hanger / fold). */
-const NOTE_CHIPS = ["No starch", "Light starch", "Heavy starch", "On hanger", "Folded"]
-
-const PAYMENT_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))
-const DISCOUNT_OPTIONS = [
-  { value: "", label: "No discount" },
-  { value: "amount", label: "AED" },
-  { value: "percent", label: "%" },
-]
 
 const priceKey = (item: string, service: string) => `${item}:${service}`
 
@@ -97,6 +87,14 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
   const items = useMemo(() => new Map(catalogue.items.map((i) => [i.id, i])), [catalogue])
   const services = useMemo(() => new Map(catalogue.services.map((s) => [s.id, s])), [catalogue])
   const upcharges = useMemo(() => new Map(catalogue.upcharges.map((u) => [u.id, u])), [catalogue])
+
+  // lists from Common Masters
+  const noteChips = catalogue.order_notes.map((n) => n.name)
+  const paymentOptions = catalogue.payment_methods.map((m) => ({ value: m.code, label: m.name }))
+  const discountOptions = [
+    { value: "", label: "No discount" },
+    ...catalogue.discount_types.map((d) => ({ value: d.code, label: d.name })),
+  ]
 
   const [serviceId, setServiceId] = useState(catalogue.services[0]?.id ?? "")
   const [search, setSearch] = useState("")
@@ -481,7 +479,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
           <Field>
             <FieldLabel htmlFor="order-notes">Notes</FieldLabel>
             <div className="flex flex-wrap gap-1.5">
-              {NOTE_CHIPS.map((chip) => {
+              {noteChips.map((chip) => {
                 const on = chips.includes(chip)
                 return (
                   <Button
@@ -536,7 +534,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                 aria-label="Discount type"
                 className="w-36"
                 value={discountType}
-                options={DISCOUNT_OPTIONS}
+                options={discountOptions}
                 onValueChange={(v) => setDiscountType((v ?? "") as DiscountType)}
               />
               {discountType && (
@@ -575,7 +573,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                 aria-label="Payment method"
                 className="flex-1"
                 value={paymentMethod}
-                options={PAYMENT_OPTIONS}
+                options={paymentOptions}
                 onValueChange={(v) => v && setPaymentMethod(v as PaymentMethod)}
               />
               {PAID_NOW.includes(paymentMethod) && (

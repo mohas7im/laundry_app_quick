@@ -18,12 +18,9 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { createUpcharge, updateUpcharge } from "../services/catalogue.service"
+import { MASTER } from "@/features/masters/types"
+import { useMasters } from "@/features/masters/use-masters"
 import type { ChargeType, Upcharge, UpchargeRequest } from "../types"
-
-const CHARGE_TYPE_OPTIONS = [
-  { value: "fixed", label: "Fixed amount (AED)" },
-  { value: "percent", label: "Percent of the line (%)" },
-]
 
 type Props = {
   open: boolean
@@ -58,6 +55,7 @@ function UpchargeForm({ upcharge, onSaved, onDone }: { upcharge?: Upcharge | nul
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const chargeTypes = useMasters(MASTER.UPCHARGE_TYPE, upcharge?.charge_type)
 
   const set = <K extends keyof UpchargeRequest>(key: K, value: UpchargeRequest[K]) =>
     setValues((v) => ({ ...v, [key]: value }))
@@ -102,7 +100,7 @@ function UpchargeForm({ upcharge, onSaved, onDone }: { upcharge?: Upcharge | nul
               id={f.id}
               aria-invalid={f["aria-invalid"]}
               value={values.charge_type}
-              options={CHARGE_TYPE_OPTIONS}
+              options={chargeTypes.options}
               onValueChange={(v) => v && set("charge_type", v as ChargeType)}
             />
           )}

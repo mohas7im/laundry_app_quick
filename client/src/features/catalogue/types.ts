@@ -9,28 +9,18 @@ export interface Service {
 }
 export type ServiceRequest = Pick<Service, "name" | "sort_order" | "is_active">
 
-export type ItemCategory = "men" | "women" | "kids" | "household" | "other"
+/** An ITEM_CATEGORY common master code ("men", "women" … admins can add more). */
+export type ItemCategory = string
+/** PRICING_TYPE common master codes: fixed, the pricing rules depend on them. */
 export type PricingType = "unit" | "per_kg" | "per_m2"
-
-export const CATEGORY_LABELS: Record<ItemCategory, string> = {
-  men: "Men",
-  women: "Women",
-  kids: "Kids",
-  household: "Household",
-  other: "Other",
-}
-
-export const PRICING_TYPE_LABELS: Record<PricingType, string> = {
-  unit: "Per item",
-  per_kg: "Per kg",
-  per_m2: "Per m²",
-}
 
 export interface Item {
   id: string
   name: string
   category: ItemCategory
+  category_name: string
   pricing_type: PricingType
+  pricing_type_name: string
   sort_order: number
   is_active: boolean
   created_at: string
@@ -54,6 +44,7 @@ export interface Upcharge {
   id: string
   name: string
   charge_type: ChargeType
+  charge_type_name: string
   amount: string
   sort_order: number
   is_active: boolean
@@ -76,6 +67,13 @@ export interface PriceCell {
 export interface PriceGrid {
   price_list: { id: string; name: string; is_default: boolean }
   services: { id: string; name: string }[]
-  items: { id: string; name: string; category: ItemCategory; pricing_type: PricingType }[]
+  items: {
+    id: string
+    name: string
+    category: ItemCategory
+    category_name: string
+    pricing_type: PricingType
+    pricing_type_name: string
+  }[]
   prices: PriceCell[]
 }

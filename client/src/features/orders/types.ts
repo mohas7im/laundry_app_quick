@@ -1,6 +1,9 @@
 // Mirrors orders.serializers (api/orders). Money is a decimal string, e.g. "8.50", VAT-inclusive.
 import type { ItemCategory, PricingType } from "@/features/catalogue/types"
 
+/** A common master value as the counter needs it. */
+export type MasterOption = { code: string; name: string }
+
 export type OrderStatus = "received" | "ready" | "collected" | "cancelled"
 export type PaymentMethod = "on_collection" | "cash" | "card" | "bank" | "on_account"
 export type DiscountType = "" | "amount" | "percent"
@@ -12,14 +15,6 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 }
 
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  on_collection: "Pay on collection",
-  cash: "Cash",
-  card: "Card",
-  bank: "Bank transfer",
-  on_account: "On account",
-}
-
 /** Methods where money changes hands at the counter now. */
 export const PAID_NOW: PaymentMethod[] = ["cash", "card", "bank"]
 
@@ -27,7 +22,14 @@ export const PAID_NOW: PaymentMethod[] = ["cash", "card", "bank"]
 export interface PosCatalogue {
   price_list: { id: string; name: string }
   services: { id: string; name: string }[]
-  items: { id: string; name: string; category: ItemCategory; pricing_type: PricingType }[]
+  items: {
+    id: string
+    name: string
+    category: ItemCategory
+    category_name: string
+    pricing_type: PricingType
+    pricing_type_name: string
+  }[]
   prices: {
     item: string
     service: string
@@ -37,6 +39,10 @@ export interface PosCatalogue {
     extra_days: number
   }[]
   upcharges: { id: string; name: string; charge_type: "fixed" | "percent"; amount: string }[]
+  /** From Common Masters (active values, in order). */
+  payment_methods: MasterOption[]
+  discount_types: MasterOption[]
+  order_notes: MasterOption[]
   settings: { vat_rate: string; ready_days: number; express_ready_days: number; ready_time: string }
 }
 
@@ -108,5 +114,6 @@ export interface Order extends OrderListRow {
   discount_reason: string
   vat_amount: string
   payment_method: PaymentMethod
+  payment_method_name: string
   created_by_name: string
 }

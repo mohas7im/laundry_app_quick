@@ -144,6 +144,15 @@ export const router = createBrowserRouter([
             ],
           },
           {
+            element: <RequirePermission permission="common_masters.view" />,
+            children: [
+              {
+                path: "common-masters",
+                lazy: lazyPage(() => import("@/features/masters/pages/common-masters-page"), (m) => m.CommonMastersPage),
+              },
+            ],
+          },
+          {
             element: <RequirePermission permission="menus.view" />,
             children: [
               { path: "menus", lazy: lazyPage(() => import("@/features/menus/pages/menus-page"), (m) => m.MenusPage) },

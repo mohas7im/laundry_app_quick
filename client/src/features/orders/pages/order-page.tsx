@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth/use-auth"
 import { formatMoney, shopDateFormat } from "@/lib/format"
 import { useRecords } from "@/lib/use-records"
 import { getOrder } from "../services/order.service"
-import { PAYMENT_METHOD_LABELS, STATUS_LABELS, type Order } from "../types"
+import { STATUS_LABELS, type Order } from "../types"
 
 const UNIT_SUFFIX = { unit: "", per_kg: " kg", per_m2: " m²" } as const
 
@@ -173,14 +173,14 @@ function Receipt({ order: o }: { order: Order }) {
         )}
         <ReceiptRow label="Total" value={formatMoney(o.total)} strong large />
         <ReceiptRow label="VAT included" value={formatMoney(o.vat_amount)} muted />
-        {paid > 0 && <ReceiptRow label={`Paid (${PAYMENT_METHOD_LABELS[o.payment_method]})`} value={formatMoney(o.paid_amount)} />}
+        {paid > 0 && <ReceiptRow label={`Paid (${o.payment_method_name})`} value={formatMoney(o.paid_amount)} />}
         <ReceiptRow
           label={balance > 0 ? "Balance due" : "Paid in full"}
           value={balance > 0 ? formatMoney(o.balance) : "✓"}
           strong
         />
         {paid === 0 && (
-          <div className="text-xs text-muted-foreground">{PAYMENT_METHOD_LABELS[o.payment_method]}</div>
+          <div className="text-xs text-muted-foreground">{o.payment_method_name}</div>
         )}
       </div>
 
