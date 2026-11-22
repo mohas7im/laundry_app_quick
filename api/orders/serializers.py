@@ -8,6 +8,8 @@ from rest_framework import serializers
 
 from catalogue.models import Item, Price, PriceList, Service, Upcharge
 from customers.models import Customer
+from masters.models import CommonMaster
+from masters.registry import DISCOUNT_TYPE, PAYMENT_METHOD
 from .models import BranchOrderCounter, Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
 
@@ -30,6 +32,15 @@ def default_price_list():
     return PriceList.objects.filter(is_default=True, is_active=True).first()
 
 
+def master_names(type_code):
+    """{code: name} of a common master list, e.g. {"cash": "Cash"}."""
+    return dict(CommonMaster.of(type_code).values_list('code', 'name'))
+
+
+def active_codes(type_code):
+    return set(CommonMaster.of(type_code).filter(is_active=True).values_list('code', flat=True))
+
+
 def quantity_text(value: Decimal) -> str:
     """3.000 → "3", 2.500 → "2.5"."""
     return format(value.normalize(), 'f')
@@ -38,15 +49,17 @@ def quantity_text(value: Decimal) -> str:
 # ── Create ────────────────────────────────────────────────────────────────
 
 class LineInputSerializer(serializers.Serializer):
-    item = serializers.PrimaryKeyRelatedField(queryset=Item.objects.filter(is_active=True))
+    item = serializers.PrimaryKeyRelatedField(
+        queryset=Item.objects.filter(is_active=True).select_related('pricing_type'))
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.filter(is_active=True))
     quantity = serializers.DecimalField(max_digits=8, decimal_places=3, min_value=Decimal('0.001'))
     upcharges = serializers.PrimaryKeyRelatedField(
-        queryset=Upcharge.objects.filter(is_active=True), many=True, required=False, default=list)
+        queryset=Upcharge.objects.filter(is_active=True).select_related('charge_type'), many=True,
+        required=False, default=list)
     notes = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
 
     def validate(self, attrs):
-        if attrs['item'].pricing_type == Item.PricingType.UNIT and attrs['quantity'] != attrs['quantity'].to_integral():
+        if attrs['item'].pricing_type.code == Item.PricingType.UNIT and attrs['quantity'] != attrs['quantity'].to_integral():
             raise serializers.ValidationError({'quantity': 'Use a whole number of pieces.'})
         if len({u.pk for u in attrs['upcharges']}) != len(attrs['upcharges']):
             raise serializers.ValidationError({'upcharges': 'Each upcharge may be added once.'})
@@ -105,10 +118,16 @@ class OrderCreateSerializer(serializers.Serializer):
                 continue
             result = price_line(LineInput(
                 unit_price=unit_price, quantity=line['quantity'], min_price=price.min_price,
-                upcharges=[UpchargeRate(u.name, u.charge_type, u.amount) for u in line['upcharges']],
+                upcharges=[UpchargeRate(u.name, u.charge_type.code, u.amount) for u in line['upcharges']],
             ))
             priced.append((line, unit_price, price.min_price, result))
             extra_days = max(extra_days, price.extra_days)
+
+        # payment method and discount type: active values of their common master lists
+        if attrs['payment_method'] not in active_codes(PAYMENT_METHOD):
+            errors['payment_method'] = 'This payment method is not available.'
+        if attrs['discount_type'] and attrs['discount_type'] not in active_codes(DISCOUNT_TYPE):
+            errors['discount_type'] = 'This discount type is not available.'
 
         # discount
         value = attrs['discount_value']
@@ -176,13 +195,13 @@ class OrderCreateSerializer(serializers.Serializer):
         for position, (line, unit_price, min_price, result) in enumerate(data['priced']):
             order_line = OrderLine.objects.create(
                 order=order, item=line['item'], service=line['service'], item_name=line['item'].name,
-                service_name=line['service'].name, pricing_type=line['item'].pricing_type,
+                service_name=line['service'].name, pricing_type=line['item'].pricing_type.code,
                 quantity=line['quantity'], unit_price=unit_price, min_price=min_price,
                 upcharge_total=result.upcharge_total, line_total=result.total, notes=line['notes'].strip(),
                 position=position,
             )
             OrderLineUpcharge.objects.bulk_create(
-                OrderLineUpcharge(line=order_line, upcharge=u, name=u.name, charge_type=u.charge_type,
+                OrderLineUpcharge(line=order_line, upcharge=u, name=u.name, charge_type=u.charge_type.code,
                                   rate=u.amount, amount=amount)
                 for u, amount in zip(line['upcharges'], result.upcharge_amounts)
             )
@@ -235,10 +254,14 @@ class OrderSerializer(OrderListSerializer):
     price_list_name = serializers.CharField(source='price_list.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     lines = OrderLineSerializer(many=True, read_only=True)
+    payment_method_name = serializers.SerializerMethodField()
+
+    def get_payment_method_name(self, order):
+        return master_names(PAYMENT_METHOD).get(order.payment_method, order.payment_method)
 
     class Meta(OrderListSerializer.Meta):
         fields = OrderListSerializer.Meta.fields + [
             'branch_name', 'branch_code', 'price_list_name', 'notes', 'bag_drop_pieces', 'lines',
             'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'discount_reason', 'vat_amount',
-            'payment_method', 'created_by_name',
+            'payment_method', 'payment_method_name', 'created_by_name',
         ]

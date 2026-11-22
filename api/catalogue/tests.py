@@ -2,7 +2,19 @@ from decimal import Decimal
 
 from accounts.test_management import Base, make_role
 from accounts.tests import body, error_fields
-from .models import Item, Price, PriceList, Service
+from masters.models import CommonMaster
+from .models import Item, Price, PriceList, Service, Upcharge
+
+
+def make_item(name, category='other', pricing_type='unit', **fields):
+    """An item with common master values given by code."""
+    return Item.objects.create(name=name, category=CommonMaster.get('ITEM_CATEGORY', category),
+                               pricing_type=CommonMaster.get('PRICING_TYPE', pricing_type), **fields)
+
+
+def make_upcharge(name, amount, charge_type='fixed', **fields):
+    return Upcharge.objects.create(name=name, amount=amount,
+                                   charge_type=CommonMaster.get('UPCHARGE_TYPE', charge_type), **fields)
 
 
 class CatalogueApiTests(Base):
@@ -55,8 +67,8 @@ class CatalogueApiTests(Base):
         dry = Service.objects.create(name='Dry Clean', sort_order=1)
         wash = Service.objects.create(name='Wash & Iron', sort_order=2)
         Service.objects.create(name='Old service', is_active=False)
-        shirt = Item.objects.create(name='Shirt', category='men')
-        laundry = Item.objects.create(name='Laundry by weight', pricing_type='per_kg')
+        shirt = make_item('Shirt', category='men')
+        laundry = make_item('Laundry by weight', pricing_type='per_kg')
         walk_in = PriceList.objects.create(name='Walk-in', is_default=True)
         url = f'/api/prices/{walk_in.id}/'
 
@@ -121,7 +133,8 @@ class CatalogueApiTests(Base):
         self.assertEqual(self.client.get('/api/services/').status_code, 403)
 
     def test_paging_and_search(self):
-        Item.objects.bulk_create(Item(name=f'Item {i:02}', sort_order=i) for i in range(1, 13))
+        for i in range(1, 13):
+            make_item(f'Item {i:02}', sort_order=i)
         page = body(self.client.get('/api/items/?page_number=2&page_size=5&search_term=item'))
         self.assertEqual(([i['name'] for i in page['items']], page['total_count']),
                          (['Item 06', 'Item 07', 'Item 08', 'Item 09', 'Item 10'], 12))

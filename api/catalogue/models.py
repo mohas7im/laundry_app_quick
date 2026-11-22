@@ -7,6 +7,8 @@ Catalogue & pricing (build pack M2):
     upcharge (stain removal, starch, urgent …)
 
 Money: exact decimals with 2 places, VAT-inclusive (AED).
+Item category, how an item is charged and the upcharge type are common masters
+(masters app); the API reads and writes their codes.
 """
 import uuid
 
@@ -39,22 +41,19 @@ class Service(models.Model):
 class Item(models.Model):
     """What customers bring: Kandura, Shirt, Blanket … One list shared by every service (table `items`)."""
 
-    class Category(models.TextChoices):
-        MEN = 'men', 'Men'
-        WOMEN = 'women', 'Women'
-        KIDS = 'kids', 'Kids'
-        HOUSEHOLD = 'household', 'Household'
-        OTHER = 'other', 'Other'
-
-    class PricingType(models.TextChoices):
-        UNIT = 'unit', 'Per item'
-        PER_KG = 'per_kg', 'Per kg'
-        PER_M2 = 'per_m2', 'Per m²'
+    class PricingType:
+        """Codes of the PRICING_TYPE master the pricing rules depend on."""
+        UNIT = 'unit'
+        PER_KG = 'per_kg'
+        PER_M2 = 'per_m2'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=80)
-    category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
-    pricing_type = models.CharField(max_length=10, choices=PricingType.choices, default=PricingType.UNIT)
+    category = models.ForeignKey('masters.CommonMaster', on_delete=models.PROTECT, related_name='+',
+                                 limit_choices_to={'type__code': 'ITEM_CATEGORY'})
+    pricing_type = models.ForeignKey('masters.CommonMaster', on_delete=models.PROTECT, related_name='+',
+                                     limit_choices_to={'type__code': 'PRICING_TYPE'},
+                                     help_text='How it is charged: per item, per kg or per m².')
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -117,13 +116,15 @@ class Price(models.Model):
 class Upcharge(models.Model):
     """An extra charge on an order line: stain removal, starch, urgent, hanger (table `upcharges`)."""
 
-    class ChargeType(models.TextChoices):
-        FIXED = 'fixed', 'Fixed amount'
-        PERCENT = 'percent', 'Percent of the line'
+    class ChargeType:
+        """Codes of the UPCHARGE_TYPE master the pricing rules depend on."""
+        FIXED = 'fixed'
+        PERCENT = 'percent'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=80)
-    charge_type = models.CharField(max_length=10, choices=ChargeType.choices, default=ChargeType.FIXED)
+    charge_type = models.ForeignKey('masters.CommonMaster', on_delete=models.PROTECT, related_name='+',
+                                    limit_choices_to={'type__code': 'UPCHARGE_TYPE'})
     amount = models.DecimalField(**MONEY)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)

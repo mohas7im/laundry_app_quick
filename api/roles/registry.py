@@ -74,6 +74,10 @@ SYSTEM_MENUS = [
         'router_name': 'users', 'router_link': '/users',
     },
     {
+        'code': 'common_masters', 'name': 'Common Masters', 'icon': 'folder', 'sort_order': 6,
+        'parent': 'administration', 'router_name': 'common-masters', 'router_link': '/common-masters',
+    },
+    {
         'code': 'menus', 'name': 'Menus', 'icon': 'list-tree', 'sort_order': 5, 'parent': 'administration',
         'router_name': 'menus', 'router_link': '/menus',
     },

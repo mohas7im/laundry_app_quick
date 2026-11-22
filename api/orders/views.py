@@ -6,6 +6,8 @@ from accounts.access import branch_menu_permission, branch_permission, get_activ
 from catalogue.models import Item, Price, Service, Upcharge
 from common.drf import ResultViewSetMixin
 from common.results import BaseResult, ErrorCode
+from masters.models import CommonMaster
+from masters.registry import DISCOUNT_TYPE, ORDER_NOTE, PAYMENT_METHOD
 from .models import Order, OrderLine
 from .serializers import (
     OrderCreateSerializer,
@@ -64,13 +66,17 @@ class PosCatalogueView(APIView):
         def money(value):
             return None if value is None else str(value)
 
+        def masters(type_code):
+            return [{'code': m.code, 'name': m.name} for m in CommonMaster.of(type_code).filter(is_active=True)]
+
         conf = order_settings()
         data = {
             'price_list': {'id': str(price_list.id), 'name': price_list.name},
             'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
             'items': [
-                {'id': str(i.id), 'name': i.name, 'category': i.category, 'pricing_type': i.pricing_type}
-                for i in Item.objects.filter(is_active=True)
+                {'id': str(i.id), 'name': i.name, 'category': i.category.code, 'category_name': i.category.name,
+                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name}
+                for i in Item.objects.filter(is_active=True).select_related('category', 'pricing_type')
             ],
             'prices': [
                 {'item': str(p.item_id), 'service': str(p.service_id), 'price': money(p.price),
@@ -79,9 +85,13 @@ class PosCatalogueView(APIView):
                 for p in Price.objects.filter(price_list=price_list, item__is_active=True, service__is_active=True)
             ],
             'upcharges': [
-                {'id': str(u.id), 'name': u.name, 'charge_type': u.charge_type, 'amount': str(u.amount)}
-                for u in Upcharge.objects.filter(is_active=True)
+                {'id': str(u.id), 'name': u.name, 'charge_type': u.charge_type.code, 'amount': str(u.amount)}
+                for u in Upcharge.objects.filter(is_active=True).select_related('charge_type')
             ],
+            # lists from common masters (active values, in order)
+            'payment_methods': masters(PAYMENT_METHOD),
+            'discount_types': masters(DISCOUNT_TYPE),
+            'order_notes': masters(ORDER_NOTE),
             'settings': {
                 'vat_rate': str(conf['vat_rate']),
                 'ready_days': conf['ready_days'],

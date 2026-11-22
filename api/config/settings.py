@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'branches',
     'roles',
     'customers',
+    'masters',
     'catalogue',
     'orders',
 ]

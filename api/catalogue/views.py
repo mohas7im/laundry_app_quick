@@ -26,10 +26,10 @@ class ServiceViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
 
 
 class ItemViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
-    queryset = Item.objects.all()
+    queryset = Item.objects.select_related('category', 'pricing_type')
     serializer_class = ItemSerializer
     permission_classes = [menu_permission('items', view_also=GRID_READERS)]
-    search_fields = ['name', 'category']
+    search_fields = ['name', 'category__name']
 
 
 class PriceListViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
@@ -48,7 +48,7 @@ class PriceListViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
 
 
 class UpchargeViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
-    queryset = Upcharge.objects.all()
+    queryset = Upcharge.objects.select_related('charge_type')
     serializer_class = UpchargeSerializer
     permission_classes = [menu_permission('upcharges')]
     search_fields = ['name']
@@ -84,8 +84,9 @@ class PriceGridView(APIView):
             'price_list': {'id': str(price_list.id), 'name': price_list.name, 'is_default': price_list.is_default},
             'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
             'items': [
-                {'id': str(i.id), 'name': i.name, 'category': i.category, 'pricing_type': i.pricing_type}
-                for i in Item.objects.filter(is_active=True)
+                {'id': str(i.id), 'name': i.name, 'category': i.category.code, 'category_name': i.category.name,
+                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name}
+                for i in Item.objects.filter(is_active=True).select_related('category', 'pricing_type')
             ],
             'prices': [
                 {

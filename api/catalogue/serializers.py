@@ -3,6 +3,9 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
+from masters.models import CommonMaster
+from masters.registry import ITEM_CATEGORY, PRICING_TYPE, UPCHARGE_TYPE
+from masters.serializers import master_field
 from .models import Item, Price, PriceList, Service, Upcharge
 
 
@@ -32,13 +35,26 @@ class ServiceSerializer(UniqueNameMixin, serializers.ModelSerializer):
 
 
 class ItemSerializer(UniqueNameMixin, serializers.ModelSerializer):
+    """category and pricing_type are common master codes ("men", "per_kg"); *_name are their labels."""
+
     name_taken_message = 'An item with this name already exists.'
+    category = master_field(ITEM_CATEGORY, required=False)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    pricing_type = master_field(PRICING_TYPE, required=False)
+    pricing_type_name = serializers.CharField(source='pricing_type.name', read_only=True)
 
     class Meta:
         model = Item
-        fields = ['id', 'name', 'category', 'pricing_type', 'sort_order', 'is_active', 'created_at']
+        fields = ['id', 'name', 'category', 'category_name', 'pricing_type', 'pricing_type_name', 'sort_order',
+                  'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
         extra_kwargs = {'name': {'validators': []}}
+
+    def validate(self, attrs):
+        if self.instance is None:  # defaults for a new item
+            attrs.setdefault('category', CommonMaster.get(ITEM_CATEGORY, 'other'))
+            attrs.setdefault('pricing_type', CommonMaster.get(PRICING_TYPE, Item.PricingType.UNIT))
+        return attrs
 
 
 class PriceListSerializer(UniqueNameMixin, serializers.ModelSerializer):
@@ -84,18 +100,24 @@ class PriceListSerializer(UniqueNameMixin, serializers.ModelSerializer):
 
 
 class UpchargeSerializer(UniqueNameMixin, serializers.ModelSerializer):
+    """charge_type is an UPCHARGE_TYPE master code ("fixed" / "percent")."""
+
     name_taken_message = 'An upcharge with this name already exists.'
+    charge_type = master_field(UPCHARGE_TYPE, required=False)
+    charge_type_name = serializers.CharField(source='charge_type.name', read_only=True)
 
     class Meta:
         model = Upcharge
-        fields = ['id', 'name', 'charge_type', 'amount', 'sort_order', 'is_active', 'created_at']
+        fields = ['id', 'name', 'charge_type', 'charge_type_name', 'amount', 'sort_order', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
         extra_kwargs = {'name': {'validators': []}}
 
     def validate(self, attrs):
-        charge_type = attrs.get('charge_type', getattr(self.instance, 'charge_type', Upcharge.ChargeType.FIXED))
+        if self.instance is None:
+            attrs.setdefault('charge_type', CommonMaster.get(UPCHARGE_TYPE, Upcharge.ChargeType.FIXED))
+        charge_type = attrs.get('charge_type') or self.instance.charge_type
         amount = attrs.get('amount', getattr(self.instance, 'amount', None))
-        if charge_type == Upcharge.ChargeType.PERCENT and amount is not None and amount > 100:
+        if charge_type.code == Upcharge.ChargeType.PERCENT and amount is not None and amount > 100:
             raise serializers.ValidationError({'amount': 'A percentage can be at most 100.'})
         return attrs
 

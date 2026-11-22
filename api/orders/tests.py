@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from accounts.test_management import PASSWORD, Base, make_role
 from accounts.tests import body, error_fields
-from catalogue.models import Item, Price, PriceList, Service, Upcharge
+from catalogue.models import Price, PriceList, Service
+from catalogue.tests import make_item, make_upcharge
 from customers.models import Customer
 from .models import Order, OrderStatusHistory, Payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
@@ -52,15 +53,15 @@ class OrderApiTests(Base):
         super().setUp()
         self.dry = Service.objects.create(name='Dry Clean', sort_order=1)
         self.wash = Service.objects.create(name='Wash & Iron', sort_order=2)
-        self.kandura = Item.objects.create(name='Kandura')
-        self.laundry = Item.objects.create(name='Laundry by weight', pricing_type='per_kg')
+        self.kandura = make_item('Kandura', category='men')
+        self.laundry = make_item('Laundry by weight', pricing_type='per_kg')
         self.walk_in = PriceList.objects.create(name='Walk-in', is_default=True)
         Price.objects.create(price_list=self.walk_in, item=self.kandura, service=self.dry,
                              price=D('15'), express_price=D('25'), extra_days=1)
         Price.objects.create(price_list=self.walk_in, item=self.kandura, service=self.wash, price=D('8.50'))
         Price.objects.create(price_list=self.walk_in, item=self.laundry, service=self.wash,
                              price=D('12'), min_price=D('30'))
-        self.stain = Upcharge.objects.create(name='Stain removal', amount=D('5'))
+        self.stain = make_upcharge('Stain removal', D('5'))
         self.customer = Customer.objects.create(name='Fatima', phone='+971501234567', branch=self.dxb)
 
         self.counter = make_role('Counter', ['orders.view', 'orders.create', 'customers.view'])
