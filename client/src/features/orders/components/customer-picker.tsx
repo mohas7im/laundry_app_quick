@@ -66,7 +66,18 @@ export function CustomerPicker({
         <div className="grid min-w-0 gap-0.5">
           <span className="truncate font-medium">{value.name}</span>
           <span className="text-sm text-muted-foreground tabular-nums">{value.phone}</span>
+          {value.preferences_text && <span className="text-xs">{value.preferences_text}</span>}
           {value.notes && <span className="text-xs text-muted-foreground">Note: {value.notes}</span>}
+          {(value.price_list || Number(value.discount_percent) > 0) && (
+            <span className="text-xs text-muted-foreground">
+              {[
+                value.price_list && `${value.price_list_name} prices`,
+                Number(value.discount_percent) > 0 && `${Number(value.discount_percent)}% discount`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
         </div>
         <Button variant="ghost" size="icon-sm" aria-label="Change customer" onClick={() => onChange(null)}>
           <XIcon />

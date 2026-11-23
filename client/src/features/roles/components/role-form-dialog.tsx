@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { OWNER_ROLE, useSaveRoleMutation, type Role, type RoleInput } from "../api"
@@ -37,7 +37,14 @@ export function RoleFormDialog({ open, onOpenChange, role }: Props) {
 function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) {
   const navigate = useNavigate()
   const [save, { isLoading: saving }] = useSaveRoleMutation()
-  const [values, setValues] = useState<RoleInput>({ name: role?.name ?? "", description: role?.description ?? "" })
+  const [values, setValues] = useState({
+    name: role?.name ?? "",
+    description: role?.description ?? "",
+    // "" = no limit
+    max_discount_percent: role?.max_discount_percent === null || role === undefined || role === null
+      ? ""
+      : String(Number(role.max_discount_percent)),
+  })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,7 +52,11 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
     setErrors({})
     try {
       // The Owner role keeps its name.
-      const data = role?.name === OWNER_ROLE ? { description: values.description } : values
+      const limit = values.max_discount_percent.trim() === "" ? null : values.max_discount_percent.trim()
+      const data: Partial<RoleInput> =
+        role?.name === OWNER_ROLE
+          ? { description: values.description }
+          : { ...values, max_discount_percent: limit }
       const saved = await save({ id: role?.id, data }).unwrap()
       onDone()
       if (role) {
@@ -93,6 +104,31 @@ function RoleForm({ role, onDone }: { role?: Role | null; onDone: () => void }) 
           />
           {errors.description && <FieldError>{errors.description}</FieldError>}
         </Field>
+        {role?.name !== OWNER_ROLE && (
+          <Field data-invalid={!!errors.max_discount_percent || undefined}>
+            <FieldLabel htmlFor="role-discount">Discount limit (%)</FieldLabel>
+            <Input
+              id="role-discount"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step={0.5}
+              className="w-32"
+              placeholder="No limit"
+              value={values.max_discount_percent}
+              aria-invalid={!!errors.max_discount_percent || undefined}
+              onChange={(e) => setValues((v) => ({ ...v, max_discount_percent: e.target.value }))}
+            />
+            {errors.max_discount_percent ? (
+              <FieldError>{errors.max_discount_percent}</FieldError>
+            ) : (
+              <FieldDescription>
+                A bigger discount needs a manager's PIN. Leave empty for no limit; 0 means no discounts.
+              </FieldDescription>
+            )}
+          </Field>
+        )}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDone}>

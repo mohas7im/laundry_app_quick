@@ -1,5 +1,6 @@
 // Mirrors orders.serializers (api/orders). Money is a decimal string, e.g. "8.50", VAT-inclusive.
 import type { ItemCategory, PricingType } from "@/features/catalogue/types"
+import type { PreferenceList } from "@/features/customers/types"
 
 /** A common master value as the counter needs it. */
 export type MasterOption = { code: string; name: string }
@@ -20,7 +21,9 @@ export const PAID_NOW: PaymentMethod[] = ["cash", "card", "bank"]
 
 /** GET /api/pos/catalogue/ — what the New Order screen needs. */
 export interface PosCatalogue {
+  /** The default price list. */
   price_list: { id: string; name: string }
+  price_lists: { id: string; name: string }[]
   services: { id: string; name: string }[]
   items: {
     id: string
@@ -30,7 +33,9 @@ export interface PosCatalogue {
     pricing_type: PricingType
     pricing_type_name: string
   }[]
+  /** Every active price list's prices (a customer's own list, the default list for the rest). */
   prices: {
+    price_list: string
     item: string
     service: string
     price: string
@@ -43,7 +48,24 @@ export interface PosCatalogue {
   payment_methods: MasterOption[]
   discount_types: MasterOption[]
   order_notes: MasterOption[]
+  /** Lines per item and service at this branch over the last 90 days (most used first). */
+  usage: { item: string; service: string; count: number }[]
+  /** The tags for each piece (Common Masters ITEM_COLOUR / ITEM_DAMAGE / ITEM_STAIN). */
+  piece_tags: Record<PieceTag, MasterOption[]>
+  preferences: PreferenceList[]
+  /** The biggest discount % this user may give without a manager; null = no limit. */
+  discount_limit: string | null
   settings: { vat_rate: string; ready_days: number; express_ready_days: number; ready_time: string }
+}
+
+export type PieceTag = "colours" | "damage" | "stains"
+
+/** The tags of one piece (names from the lists) and a note. */
+export interface PieceNote {
+  colours: string[]
+  damage: string[]
+  stains: string[]
+  note: string
 }
 
 export interface OrderLineRequest {
@@ -53,6 +75,8 @@ export interface OrderLineRequest {
   quantity: string
   upcharges: string[]
   notes?: string
+  /** Piece 1 first; empty pieces at the end can be left out. */
+  pieces?: PieceNote[]
 }
 
 export interface OrderRequest {
@@ -61,6 +85,8 @@ export interface OrderRequest {
   /** Shop time "2026-11-24T18:00" (no offset); null = the server's suggestion. */
   ready_by: string | null
   notes: string
+  /** Keep the notes on the customer; they fill in on their next order. */
+  save_notes: boolean
   bag_drop_pieces: number
   lines: OrderLineRequest[]
   discount_type: DiscountType
@@ -68,7 +94,12 @@ export interface OrderRequest {
   discount_reason: string
   payment_method: PaymentMethod
   paid_amount: string
+  /** A manager's PIN, when the API asked for one (field error on approval_pin). */
+  approval_pin?: string
 }
+
+/** PUT /api/orders/<id>/ — no money here (Pay / Refund); a reason for the timeline. */
+export type OrderUpdateRequest = Omit<OrderRequest, "payment_method" | "paid_amount"> & { reason: string }
 
 export interface OrderListRow {
   id: string
@@ -124,23 +155,29 @@ export type MoveTarget = string
 
 export interface OrderLine {
   id: string
+  item: string
+  service: string
   item_name: string
   service_name: string
   pricing_type: PricingType
   quantity: string
   unit_price: string
   min_price: string | null
-  upcharges: { name: string; amount: string }[]
+  upcharges: { upcharge: string; name: string; amount: string }[]
   upcharge_total: string
   line_total: string
   notes: string
+  pieces: PieceNote[]
 }
 
 export interface Order extends OrderListRow {
   branch_name: string
   branch_code: string
+  price_list: string
   price_list_name: string
   notes: string
+  /** The customer's preferences when the order was taken, e.g. "Shirt: Boxed / Starch: No starch". */
+  preferences: string
   bag_drop_pieces: number
   lines: OrderLine[]
   subtotal: string
@@ -148,6 +185,8 @@ export interface Order extends OrderListRow {
   discount_value: string
   discount_amount: string
   discount_reason: string
+  /** The manager who approved a discount over the limit. */
+  discount_approved_by_name: string
   vat_amount: string
   payment_method: PaymentMethod
   payment_method_name: string

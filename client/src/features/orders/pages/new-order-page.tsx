@@ -1,12 +1,23 @@
 import { useCallback, useMemo, useState } from "react"
-import { Link, useNavigate } from "react-router"
-import { CircleAlertIcon, MinusIcon, PackageIcon, PlusIcon, SearchIcon, Trash2Icon, XIcon, ZapIcon } from "lucide-react"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
+import {
+  CircleAlertIcon,
+  MinusIcon,
+  PackageIcon,
+  PlusIcon,
+  SearchIcon,
+  TagIcon,
+  Trash2Icon,
+  XIcon,
+  ZapIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { SelectField } from "@/components/select-field"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -24,33 +35,81 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { getCustomer } from "@/features/customers/services/customer.service"
 import type { Customer } from "@/features/customers/types"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { formatMoney, shopNow } from "@/lib/format"
 import { useRecords } from "@/lib/use-records"
+import { ApprovalPinDialog } from "../components/approval-pin-dialog"
 import { CustomerPicker } from "../components/customer-picker"
+import { PieceNotesDialog, isEmptyPiece, pieceSummary } from "../components/piece-notes-dialog"
 import { fromCents, lineTotal, orderTotals, suggestedReadyBy, toCents } from "../lib/pricing"
-import { createOrder, getPosCatalogue } from "../services/order.service"
+import { createOrder, getOrder, getPosCatalogue, updateOrder } from "../services/order.service"
 import {
   PAID_NOW,
   type DiscountType,
-  type OrderRequest,
+  type Order,
+  type OrderLineRequest,
   type PaymentMethod,
+  type PieceNote,
   type PosCatalogue,
 } from "../types"
 
-type CartLine = { key: string; item: string; service: string; quantity: string; upcharges: string[] }
+type CartLine = {
+  key: string
+  item: string
+  service: string
+  quantity: string
+  upcharges: string[]
+  pieces: PieceNote[]
+}
+
+/** Everything the screen starts with: empty, or from an order (copy or edit). */
+type Draft = {
+  customer: Customer | null
+  express: boolean
+  lines: CartLine[]
+  bagPieces: string
+  chips: string[]
+  notes: string
+  readyBy: string | null
+  discountType: DiscountType
+  discountValue: string
+  discountReason: string
+  /** Lines of the source order whose item or service is no longer sold. */
+  dropped: number
+}
+
+type Loaded = { catalogue: PosCatalogue; source: Order | null; customer: Customer | null }
 
 const UNIT_SUFFIX = { unit: "", per_kg: "kg", per_m2: "m²" } as const
+/** The reason put on a discount that comes from the customer's own discount %. */
+const CUSTOMER_DISCOUNT = "Customer discount"
 
+const tileKey = (item: string, service: string) => `${item}:${service}`
 
-const priceKey = (item: string, service: string) => `${item}:${service}`
-
+/** /orders/new — a new order; /orders/new?copy=<id> starts from another order's items. */
 export function NewOrderPage() {
-  const catalogue = useRecords(getPosCatalogue, null as PosCatalogue | null)
+  const [params] = useSearchParams()
+  return <OrderScreen sourceId={params.get("copy")} mode="new" />
+}
 
-  if (catalogue.loading) {
+/** /orders/:id/edit — change an order that hasn't been collected. */
+export function EditOrderPage() {
+  const { id = "" } = useParams()
+  return <OrderScreen sourceId={id} mode="edit" />
+}
+
+function OrderScreen({ sourceId, mode }: { sourceId: string | null; mode: "new" | "edit" }) {
+  const load = useCallback(async (): Promise<Loaded> => {
+    const [catalogue, source] = await Promise.all([getPosCatalogue(), sourceId ? getOrder(sourceId) : null])
+    const customer = source ? await getCustomer(source.customer) : null
+    return { catalogue, source, customer }
+  }, [sourceId])
+  const loaded = useRecords(load, null as Loaded | null)
+
+  if (loaded.loading) {
     return (
       <div className="flex h-60 items-center justify-center gap-2 text-muted-foreground">
         <Spinner />
@@ -58,35 +117,128 @@ export function NewOrderPage() {
       </div>
     )
   }
-  if (catalogue.error || !catalogue.data) {
+  if (loaded.error || !loaded.data) {
     return (
       <Empty className="rounded-lg border">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <CircleAlertIcon />
           </EmptyMedia>
-          <EmptyTitle>Can't take orders yet</EmptyTitle>
-          <EmptyDescription>{getApiErrorMessage(catalogue.error)}</EmptyDescription>
+          <EmptyTitle>{mode === "edit" ? "Can't edit this order" : "Can't take orders yet"}</EmptyTitle>
+          <EmptyDescription>{getApiErrorMessage(loaded.error)}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button variant="outline" size="sm" onClick={catalogue.retry}>
+          <Button variant="outline" size="sm" onClick={loaded.retry}>
             Try again
           </Button>
         </EmptyContent>
       </Empty>
     )
   }
-  return <PosScreen catalogue={catalogue.data} />
+
+  const { catalogue, source, customer } = loaded.data
+  const editing = mode === "edit" ? source : null
+  if (editing && (editing.status === "collected" || editing.status === "cancelled")) {
+    return (
+      <Empty className="rounded-lg border">
+        <EmptyHeader>
+          <EmptyTitle>Order {editing.number} is {editing.status}</EmptyTitle>
+          <EmptyDescription>Only orders that haven't been collected can be changed.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link to={`/orders/${editing.id}`} />}>
+            Back to the order
+          </Button>
+        </EmptyContent>
+      </Empty>
+    )
+  }
+  return (
+    <PosScreen
+      key={`${mode}:${sourceId ?? ""}`}
+      catalogue={catalogue}
+      editing={editing}
+      copiedFrom={mode === "new" ? source : null}
+      initial={source ? draftFrom(source, customer, catalogue, mode === "edit") : emptyDraft}
+    />
+  )
 }
 
-function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
+const emptyDraft: Draft = {
+  customer: null,
+  express: false,
+  lines: [],
+  bagPieces: "",
+  chips: [],
+  notes: "",
+  readyBy: null,
+  discountType: "",
+  discountValue: "",
+  discountReason: "",
+  dropped: 0,
+}
+
+/** "No starch. Gutra hanger" → the chips that match the quick notes, and the rest as text. */
+function splitNotes(text: string, chipNames: string[]) {
+  const parts = text.split(". ").map((p) => p.trim()).filter(Boolean)
+  return {
+    chips: parts.filter((p) => chipNames.includes(p)),
+    notes: parts.filter((p) => !chipNames.includes(p)).join(". "),
+  }
+}
+
+function draftFrom(order: Order, customer: Customer | null, catalogue: PosCatalogue, edit: boolean): Draft {
+  const items = new Set(catalogue.items.map((i) => i.id))
+  const services = new Set(catalogue.services.map((s) => s.id))
+  const upcharges = new Set(catalogue.upcharges.map((u) => u.id))
+  const kept = order.lines.filter((l) => items.has(l.item) && services.has(l.service))
+  return {
+    customer,
+    express: order.is_express,
+    lines: kept.map((l) => ({
+      key: crypto.randomUUID(),
+      item: l.item,
+      service: l.service,
+      quantity: l.quantity,
+      upcharges: l.upcharges.map((u) => u.upcharge).filter((id) => upcharges.has(id)),
+      pieces: l.pieces,
+    })),
+    bagPieces: order.bag_drop_pieces ? String(order.bag_drop_pieces) : "",
+    ...splitNotes(order.notes, catalogue.order_notes.map((n) => n.name)),
+    // edit: keep the promised time (shop time, for the input); copy: a new suggestion
+    readyBy: edit ? shopNow(new Date(order.ready_by)).toISOString().slice(0, 16) : null,
+    discountType: edit ? order.discount_type : "",
+    discountValue: edit && order.discount_type ? String(Number(order.discount_value)) : "",
+    discountReason: edit ? order.discount_reason : "",
+    dropped: order.lines.length - kept.length,
+  }
+}
+
+function PosScreen({
+  catalogue,
+  editing,
+  copiedFrom,
+  initial,
+}: {
+  catalogue: PosCatalogue
+  /** The order being changed; null = a new order. */
+  editing: Order | null
+  copiedFrom: Order | null
+  initial: Draft
+}) {
   const navigate = useNavigate()
   const { can } = useAuth()
 
-  const prices = useMemo(() => new Map(catalogue.prices.map((p) => [priceKey(p.item, p.service), p])), [catalogue])
   const items = useMemo(() => new Map(catalogue.items.map((i) => [i.id, i])), [catalogue])
   const services = useMemo(() => new Map(catalogue.services.map((s) => [s.id, s])), [catalogue])
   const upcharges = useMemo(() => new Map(catalogue.upcharges.map((u) => [u.id, u])), [catalogue])
+  // every price list's prices: "<list>:<item>:<service>"
+  const priceIndex = useMemo(
+    () => new Map(catalogue.prices.map((p) => [`${p.price_list}:${p.item}:${p.service}`, p])),
+    [catalogue],
+  )
+  // most used first: lines per item and service at this branch
+  const usage = useMemo(() => new Map(catalogue.usage.map((u) => [tileKey(u.item, u.service), u.count])), [catalogue])
 
   // lists from Common Masters
   const noteChips = catalogue.order_notes.map((n) => n.name)
@@ -98,36 +250,48 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
 
   const [serviceId, setServiceId] = useState(catalogue.services[0]?.id ?? "")
   const [search, setSearch] = useState("")
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [express, setExpress] = useState(false)
-  const [lines, setLines] = useState<CartLine[]>([])
-  const [bagDrop, setBagDrop] = useState(false)
-  const [bagPieces, setBagPieces] = useState("")
-  const [chips, setChips] = useState<string[]>([])
-  const [notes, setNotes] = useState("")
-  const [readyBy, setReadyBy] = useState<string | null>(null) // null = the suggestion
-  const [discountType, setDiscountType] = useState<DiscountType>("")
-  const [discountValue, setDiscountValue] = useState("")
-  const [discountReason, setDiscountReason] = useState("")
+  const [customer, setCustomer] = useState<Customer | null>(initial.customer)
+  const [express, setExpress] = useState(initial.express)
+  const [lines, setLines] = useState<CartLine[]>(initial.lines)
+  const [bagDrop, setBagDrop] = useState(!!initial.bagPieces)
+  const [bagPieces, setBagPieces] = useState(initial.bagPieces)
+  const [chips, setChips] = useState<string[]>(initial.chips)
+  const [notes, setNotes] = useState(initial.notes)
+  const [saveNotes, setSaveNotes] = useState(false)
+  const [readyBy, setReadyBy] = useState<string | null>(initial.readyBy) // null = the suggestion
+  const [discountType, setDiscountType] = useState<DiscountType>(initial.discountType)
+  const [discountValue, setDiscountValue] = useState(initial.discountValue)
+  const [discountReason, setDiscountReason] = useState(initial.discountReason)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("on_collection")
   const [paidAmount, setPaidAmount] = useState("")
+  const [reason, setReason] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [approvalReason, setApprovalReason] = useState<string | null>(null)
+  const [notesLine, setNotesLine] = useState<string | null>(null) // the line whose piece notes are open
   // the ready-by suggestion counts from when the screen opened
   const [openedAt] = useState(() => shopNow())
 
   // ── pricing (live; the server recalculates on submit) ──────────────────
+  // the customer's own price list first, the default list for the rest
+  const ownList = customer?.price_list ?? null
+  const priceOf = useCallback(
+    (item: string, service: string) =>
+      (ownList ? priceIndex.get(`${ownList}:${item}:${service}`) : undefined) ??
+      priceIndex.get(`${catalogue.price_list.id}:${item}:${service}`),
+    [priceIndex, ownList, catalogue.price_list.id],
+  )
   const unitPriceOf = useCallback(
     (item: string, service: string) => {
-      const p = prices.get(priceKey(item, service))
+      const p = priceOf(item, service)
       if (!p) return null
       return express ? p.express_price : p.price
     },
-    [prices, express],
+    [priceOf, express],
   )
 
   const priced = lines.map((line) => {
-    const p = prices.get(priceKey(line.item, line.service))
+    const p = priceOf(line.item, line.service)
     const unit = unitPriceOf(line.item, line.service)
     const total =
       unit === null || !p
@@ -140,7 +304,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
           })
     return { line, unit, total }
   })
-  const missingExpress = priced.filter((p) => p.total === null)
+  const missingPrice = priced.filter((p) => p.total === null)
   const totals = orderTotals(
     priced.map((p) => p.total ?? 0),
     discountType,
@@ -149,7 +313,7 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
   )
   const paidCents = toCents(paidAmount)
 
-  const extraDays = Math.max(0, ...lines.map((l) => prices.get(priceKey(l.item, l.service))?.extra_days ?? 0))
+  const extraDays = Math.max(0, ...lines.map((l) => priceOf(l.item, l.service)?.extra_days ?? 0))
   // shop time, e.g. "2026-11-24T18:00"
   const suggestion = suggestedReadyBy(openedAt, {
     express,
@@ -159,13 +323,27 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
     readyTime: catalogue.settings.ready_time,
   })
 
-  // ── tiles ──────────────────────────────────────────────────────────────
+  // a discount over the user's limit needs a manager (not the customer's own %, nor an unchanged one)
+  const customerDiscount =
+    discountType === "percent" && !!customer && Number(discountValue) > 0 &&
+    Number(discountValue) <= Number(customer.discount_percent)
+  const unchangedDiscount =
+    !!editing && editing.discount_type === discountType && Number(editing.discount_value) === Number(discountValue)
+  const discountPercent = totals.subtotal > 0 ? (totals.discount * 100) / totals.subtotal : 0
+  const overLimit =
+    catalogue.discount_limit !== null && totals.discount > 0 && !customerDiscount && !unchangedDiscount &&
+    discountPercent > Number(catalogue.discount_limit) + 0.005
+
+  // ── tiles: priced for this service, most used first ───────────────────
   const tiles = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return catalogue.items.filter(
-      (i) => prices.has(priceKey(i.id, serviceId)) && (!term || i.name.toLowerCase().includes(term)),
-    )
-  }, [catalogue, prices, serviceId, search])
+    return catalogue.items
+      .filter((i) => priceOf(i.id, serviceId) && (!term || i.name.toLowerCase().includes(term)))
+      .sort((a, b) => (usage.get(tileKey(b.id, serviceId)) ?? 0) - (usage.get(tileKey(a.id, serviceId)) ?? 0))
+  }, [catalogue, priceOf, serviceId, search, usage])
+
+  const pieceCount = (line: CartLine) =>
+    items.get(line.item)?.pricing_type === "unit" ? Math.max(0, Math.floor(Number(line.quantity) || 0)) : 1
 
   const countInCart = (item: string) =>
     lines
@@ -179,7 +357,10 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
         if (items.get(itemId)?.pricing_type !== "unit") return prev // weighed items: edit the kg/m²
         return prev.map((l) => (l === existing ? { ...l, quantity: String((Number(l.quantity) || 0) + 1) } : l))
       }
-      return [...prev, { key: crypto.randomUUID(), item: itemId, service: serviceId, quantity: "1", upcharges: [] }]
+      return [
+        ...prev,
+        { key: crypto.randomUUID(), item: itemId, service: serviceId, quantity: "1", upcharges: [], pieces: [] },
+      ]
     })
   }
 
@@ -187,43 +368,116 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   const removeLine = (key: string) => setLines((prev) => prev.filter((l) => l.key !== key))
 
+  /** Picking a customer fills in their saved notes and their own discount. */
+  function chooseCustomer(next: Customer | null) {
+    setCustomer(next)
+    setErrors(({ customer: _gone, ...rest }) => rest)
+    if (next && !editing && !notes.trim() && !chips.length && next.notes) {
+      const saved = splitNotes(next.notes, noteChips)
+      setChips(saved.chips)
+      setNotes(saved.notes)
+    }
+    const percent = Number(next?.discount_percent ?? 0)
+    if (percent > 0 && (!discountType || discountReason === CUSTOMER_DISCOUNT)) {
+      setDiscountType("percent")
+      setDiscountValue(String(percent))
+      setDiscountReason(CUSTOMER_DISCOUNT)
+    } else if (percent === 0 && discountReason === CUSTOMER_DISCOUNT) {
+      setDiscountType("")
+      setDiscountValue("")
+      setDiscountReason("")
+    }
+  }
+
   // ── submit ─────────────────────────────────────────────────────────────
+  /** Sends the order (with a manager's PIN when the API asked for one); throws the API error. */
+  async function send(pin?: string) {
+    if (!customer) return
+    const orderLines: OrderLineRequest[] = lines.map((l) => {
+      const pieces = l.pieces.slice(0, pieceCount(l))
+      while (pieces.length && isEmptyPiece(pieces[pieces.length - 1]!)) pieces.pop()
+      return { item: l.item, service: l.service, quantity: l.quantity || "0", upcharges: l.upcharges, pieces }
+    })
+    const common = {
+      customer: customer.id,
+      is_express: express,
+      // shop time without an offset; the server reads it as shop time (settings.TIME_ZONE)
+      ready_by: readyBy,
+      notes: [...chips, notes.trim()].filter(Boolean).join(". "),
+      save_notes: saveNotes,
+      bag_drop_pieces: bagDrop ? Number(bagPieces) || 0 : 0,
+      lines: orderLines,
+      discount_type: discountType,
+      discount_value: discountType ? discountValue || "0" : "0",
+      discount_reason: discountReason,
+      ...(pin ? { approval_pin: pin } : {}),
+    }
+    if (editing) {
+      const order = await updateOrder(editing.id, { ...common, reason })
+      toast.success(`Order ${order.number} updated`)
+      navigate(`/orders/${order.id}`, { replace: true })
+    } else {
+      const order = await createOrder({
+        ...common,
+        payment_method: paymentMethod,
+        paid_amount: PAID_NOW.includes(paymentMethod) ? paidAmount || "0" : "0",
+      })
+      toast.success(`Order ${order.number} created`)
+      navigate(`/orders/${order.id}`, { replace: true })
+    }
+  }
+
+  function showError(err: unknown) {
+    const fieldErrors = getApiFieldErrors(err)
+    setErrors(fieldErrors)
+    toast.error(
+      Object.values(fieldErrors)[0] ??
+        getApiErrorMessage(err, editing ? "Couldn't save the order." : "Couldn't create the order."),
+    )
+  }
+
   async function submit() {
     if (submitting) return
     if (!customer) {
       setErrors({ customer: "Choose the customer first." })
       return
     }
+    if (editing && !reason.trim()) {
+      setErrors({ reason: "Say why the order is being changed." })
+      return
+    }
     setSubmitting(true)
     setErrors({})
-    const payload: OrderRequest = {
-      customer: customer.id,
-      is_express: express,
-      // shop time without an offset; the server reads it as shop time (settings.TIME_ZONE)
-      ready_by: readyBy,
-      notes: [...chips, notes.trim()].filter(Boolean).join(". "),
-      bag_drop_pieces: bagDrop ? Number(bagPieces) || 0 : 0,
-      lines: lines.map((l) => ({ item: l.item, service: l.service, quantity: l.quantity || "0", upcharges: l.upcharges })),
-      discount_type: discountType,
-      discount_value: discountType ? discountValue || "0" : "0",
-      discount_reason: discountReason,
-      payment_method: paymentMethod,
-      paid_amount: PAID_NOW.includes(paymentMethod) ? paidAmount || "0" : "0",
-    }
     try {
-      const order = await createOrder(payload)
-      toast.success(`Order ${order.number} created`)
-      navigate(`/orders/${order.id}`, { replace: true })
+      await send()
     } catch (err) {
       const fieldErrors = getApiFieldErrors(err)
-      setErrors(fieldErrors)
-      toast.error(Object.values(fieldErrors)[0] ?? getApiErrorMessage(err, "Couldn't create the order."))
+      if (fieldErrors.approval_pin) setApprovalReason(fieldErrors.approval_pin)
+      else showError(err)
     } finally {
       setSubmitting(false)
     }
   }
 
-  const canSubmit = !!customer && (lines.length > 0 || (bagDrop && Number(bagPieces) > 0)) && !missingExpress.length
+  /** The PIN dialog resends; a wrong PIN stays in the dialog, anything else closes it. */
+  async function approve(pin: string): Promise<string | null> {
+    try {
+      await send(pin)
+      setApprovalReason(null)
+      return null
+    } catch (err) {
+      const fieldErrors = getApiFieldErrors(err)
+      if (fieldErrors.approval_pin) return fieldErrors.approval_pin
+      setApprovalReason(null)
+      showError(err)
+      return null
+    }
+  }
+
+  const canSubmit =
+    !!customer && (lines.length > 0 || (bagDrop && Number(bagPieces) > 0)) && !missingPrice.length
+  const openLine = lines.find((l) => l.key === notesLine) ?? null
+  const paidSoFar = editing ? toCents(editing.paid_amount) : 0
 
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start">
@@ -289,17 +543,25 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
       {/* right: the order */}
       <Card className="lg:sticky lg:top-4">
         <CardHeader>
-          <CardTitle>New order</CardTitle>
+          <CardTitle>{editing ? `Edit order ${editing.number}` : "New order"}</CardTitle>
+          {copiedFrom && <CardDescription>Copied from order {copiedFrom.number}.</CardDescription>}
         </CardHeader>
         <CardContent className="grid gap-4">
+          {initial.dropped > 0 && (
+            <Alert>
+              <CircleAlertIcon />
+              <AlertDescription>
+                {initial.dropped} {initial.dropped === 1 ? "line was" : "lines were"} left out: the item or
+                service is no longer sold.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Field data-invalid={!!errors.customer || undefined}>
             <FieldLabel>Customer</FieldLabel>
             <CustomerPicker
               value={customer}
-              onChange={(c) => {
-                setCustomer(c)
-                setErrors(({ customer: _gone, ...rest }) => rest)
-              }}
+              onChange={chooseCustomer}
               canCreate={can("customers.create")}
               invalid={!!errors.customer}
             />
@@ -324,13 +586,15 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                 const item = items.get(line.item)!
                 const service = services.get(line.service)!
                 const suffix = UNIT_SUFFIX[item.pricing_type]
+                const tagged = line.pieces.slice(0, pieceCount(line))
                 return (
                   <div key={line.key} className="grid gap-2 rounded-lg border p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="grid min-w-0">
                         <span className="truncate font-medium">{item.name}</span>
                         <span className="text-xs text-muted-foreground">
-                          {service.name} · {unit === null ? "no express price" : `${formatMoney(unit)}${suffix ? ` / ${suffix}` : " each"}`}
+                          {service.name} ·{" "}
+                          {unit === null ? "no price" : `${formatMoney(unit)}${suffix ? ` / ${suffix}` : " each"}`}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -387,6 +651,21 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                         </div>
                       )}
 
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={pieceCount(line) === 0}
+                        onClick={() => setNotesLine(line.key)}
+                      >
+                        <TagIcon data-icon="inline-start" />
+                        Item notes
+                        {tagged.length > 0 && (
+                          <Badge variant="secondary" className="tabular-nums">
+                            {tagged.filter((p) => !isEmptyPiece(p)).length}
+                          </Badge>
+                        )}
+                      </Button>
+
                       {catalogue.upcharges.length > 0 && (
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>
@@ -433,6 +712,17 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                         ))}
                       </div>
                     )}
+                    {tagged.some((p) => !isEmptyPiece(p)) && (
+                      <ul className="grid gap-0.5 text-xs text-muted-foreground">
+                        {tagged.map((p, i) =>
+                          isEmptyPiece(p) ? null : (
+                            <li key={i}>
+                              <span className="tabular-nums">#{i + 1}</span> {pieceSummary(p)}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    )}
                   </div>
                 )
               })
@@ -441,9 +731,11 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                 Tap items on the left to add them.
               </p>
             )}
-            {missingExpress.length > 0 && (
+            {missingPrice.length > 0 && (
               <p className="text-sm text-destructive">
-                Some items have no express price. Remove them or turn express off.
+                {express
+                  ? "Some items have no express price. Remove them or turn express off."
+                  : "Some items have no price. Remove them."}
               </p>
             )}
           </div>
@@ -456,7 +748,11 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                   <PackageIcon className="size-4" />
                   Bag drop
                 </Label>
-                <span className="text-xs text-muted-foreground">Count the pieces now, add the items later.</span>
+                <span className="text-xs text-muted-foreground">
+                  {editing && initial.bagPieces
+                    ? "Add the items now and turn this off, or keep the count."
+                    : "Count the pieces now, add the items later."}
+                </span>
               </div>
               <Switch id="order-bag-drop" checked={bagDrop} onCheckedChange={setBagDrop} />
             </div>
@@ -477,7 +773,19 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
 
           {/* notes */}
           <Field>
-            <FieldLabel htmlFor="order-notes">Notes</FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor="order-notes">Notes</FieldLabel>
+              <Label htmlFor="order-save-notes" className="gap-2 text-xs font-normal text-muted-foreground">
+                Save for next time
+                <Switch
+                  id="order-save-notes"
+                  size="sm"
+                  checked={saveNotes}
+                  disabled={!customer}
+                  onCheckedChange={setSaveNotes}
+                />
+              </Label>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {noteChips.map((chip) => {
                 const on = chips.includes(chip)
@@ -560,51 +868,58 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
                 onChange={(e) => setDiscountReason(e.target.value)}
               />
             )}
+            {overLimit && (
+              <p className="text-xs text-muted-foreground">
+                Over your {Number(catalogue.discount_limit)}% limit: a manager's PIN will be asked.
+              </p>
+            )}
             {(errors.discount_value || errors.discount_reason) && (
               <p className="text-sm text-destructive">{errors.discount_value ?? errors.discount_reason}</p>
             )}
           </div>
 
-          {/* payment */}
-          <div className="grid gap-2">
-            <Label>Payment</Label>
-            <div className="flex gap-2">
-              <SelectField
-                aria-label="Payment method"
-                className="flex-1"
-                value={paymentMethod}
-                options={paymentOptions}
-                onValueChange={(v) => v && setPaymentMethod(v as PaymentMethod)}
-              />
-              {PAID_NOW.includes(paymentMethod) && (
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step={0.01}
-                  className="w-28"
-                  aria-label="Amount paid"
-                  aria-invalid={!!errors.paid_amount || undefined}
-                  placeholder="Paid"
-                  value={paidAmount}
-                  onChange={(e) => setPaidAmount(e.target.value)}
+          {/* payment (new orders; an edited order is paid from its page) */}
+          {!editing && (
+            <div className="grid gap-2">
+              <Label>Payment</Label>
+              <div className="flex gap-2">
+                <SelectField
+                  aria-label="Payment method"
+                  className="flex-1"
+                  value={paymentMethod}
+                  options={paymentOptions}
+                  onValueChange={(v) => v && setPaymentMethod(v as PaymentMethod)}
                 />
+                {PAID_NOW.includes(paymentMethod) && (
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.01}
+                    className="w-28"
+                    aria-label="Amount paid"
+                    aria-invalid={!!errors.paid_amount || undefined}
+                    placeholder="Paid"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(e.target.value)}
+                  />
+                )}
+              </div>
+              {PAID_NOW.includes(paymentMethod) && (
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="h-auto w-fit p-0"
+                  onClick={() => setPaidAmount(fromCents(totals.total))}
+                >
+                  Paid in full ({formatMoney(fromCents(totals.total))})
+                </Button>
+              )}
+              {(errors.paid_amount || errors.payment_method) && (
+                <p className="text-sm text-destructive">{errors.paid_amount ?? errors.payment_method}</p>
               )}
             </div>
-            {PAID_NOW.includes(paymentMethod) && (
-              <Button
-                variant="link"
-                size="xs"
-                className="h-auto w-fit p-0"
-                onClick={() => setPaidAmount(fromCents(totals.total))}
-              >
-                Paid in full ({formatMoney(fromCents(totals.total))})
-              </Button>
-            )}
-            {(errors.paid_amount || errors.payment_method) && (
-              <p className="text-sm text-destructive">{errors.paid_amount ?? errors.payment_method}</p>
-            )}
-          </div>
+          )}
 
           {/* totals */}
           <dl className="grid gap-1 rounded-lg bg-muted/40 p-3 text-sm tabular-nums">
@@ -612,24 +927,69 @@ function PosScreen({ catalogue }: { catalogue: PosCatalogue }) {
             {totals.discount > 0 && <TotalRow label="Discount" value={-totals.discount} />}
             <TotalRow label="Total" value={totals.total} strong />
             <TotalRow label={`VAT ${Number(catalogue.settings.vat_rate)}% included`} value={totals.vat} muted />
-            {PAID_NOW.includes(paymentMethod) && paidCents > 0 && (
+            {editing && paidSoFar > 0 && (
+              <>
+                <TotalRow label="Paid so far" value={paidSoFar} />
+                <TotalRow label="Balance" value={Math.max(totals.total - paidSoFar, 0)} strong />
+              </>
+            )}
+            {!editing && PAID_NOW.includes(paymentMethod) && paidCents > 0 && (
               <>
                 <TotalRow label="Paid now" value={paidCents} />
                 <TotalRow label="Balance" value={Math.max(totals.total - paidCents, 0)} strong />
               </>
             )}
           </dl>
+
+          {editing && (
+            <Field data-invalid={!!errors.reason || undefined}>
+              <FieldLabel htmlFor="order-edit-reason">Reason for the change</FieldLabel>
+              <Input
+                id="order-edit-reason"
+                placeholder="e.g. Customer added 2 shirts"
+                maxLength={200}
+                value={reason}
+                aria-invalid={!!errors.reason || undefined}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              {errors.reason ? (
+                <FieldError>{errors.reason}</FieldError>
+              ) : (
+                Number(editing.paid_amount) > 0 && (
+                  <p className="text-xs text-muted-foreground">This order has been paid: a manager must approve.</p>
+                )
+              )}
+            </Field>
+          )}
         </CardContent>
         <CardFooter className="flex-col gap-2 border-t">
           <Button size="lg" className="w-full" disabled={!canSubmit || submitting} onClick={submit}>
             {submitting && <Spinner data-icon="inline-start" />}
-            Create order · {formatMoney(fromCents(totals.total))}
+            {editing ? "Save changes" : "Create order"} · {formatMoney(fromCents(totals.total))}
           </Button>
-          <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/orders" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            render={<Link to={editing ? `/orders/${editing.id}` : "/orders"} />}
+          >
             Cancel
           </Button>
         </CardFooter>
       </Card>
+
+      <PieceNotesDialog
+        title={openLine ? `${items.get(openLine.item)?.name} · ${services.get(openLine.service)?.name}` : null}
+        count={openLine ? pieceCount(openLine) : 0}
+        pieces={openLine?.pieces ?? []}
+        tags={catalogue.piece_tags}
+        onSave={(pieces) => {
+          if (openLine) updateLine(openLine.key, { pieces })
+          setNotesLine(null)
+        }}
+        onClose={() => setNotesLine(null)}
+      />
+      <ApprovalPinDialog reason={approvalReason} onApprove={approve} onCancel={() => setApprovalReason(null)} />
     </div>
   )
 }

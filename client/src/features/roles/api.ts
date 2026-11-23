@@ -9,12 +9,14 @@ export interface Role {
   id: string
   name: string
   description: string
+  /** The biggest discount (% of the order) without a manager's PIN, e.g. "10.00"; null = no limit. */
+  max_discount_percent: string | null
   permission_count: number
   user_count: number
   created_at: string
 }
 
-export type RoleInput = Pick<Role, "name" | "description">
+export type RoleInput = Pick<Role, "name" | "description" | "max_discount_percent">
 
 export const rolesApi = baseApi.injectEndpoints({
   endpoints: (build) => ({

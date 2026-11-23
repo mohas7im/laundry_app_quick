@@ -1,10 +1,28 @@
 import { useCallback, useState } from "react"
 import { Link, useParams } from "react-router"
-import { ArrowLeftIcon, BanknoteIcon, CircleAlertIcon, PlusIcon, PrinterIcon, Undo2Icon, ZapIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  BanknoteIcon,
+  BanIcon,
+  CircleAlertIcon,
+  CopyIcon,
+  EllipsisIcon,
+  PencilIcon,
+  PlusIcon,
+  PrinterIcon,
+  Undo2Icon,
+  ZapIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -15,6 +33,8 @@ import { MoneyDialog } from "@/features/payments/components/money-dialog"
 import { payOrder, refundOrder } from "@/features/payments/services/payments.service"
 import { getCompanySettings } from "@/features/company/services/company.service"
 import type { CompanySettings } from "@/features/company/types"
+import { CancelOrderDialog } from "../components/cancel-order-dialog"
+import { pieceSummary, isEmptyPiece } from "../components/piece-notes-dialog"
 import { getOrder } from "../services/order.service"
 import { STATUS_LABELS, type Order } from "../types"
 
@@ -38,6 +58,7 @@ export function OrderPage() {
   const { can } = useAuth()
   const [paying, setPaying] = useState(false)
   const [refunding, setRefunding] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   if (order.loading) {
     return (
@@ -70,6 +91,7 @@ export function OrderPage() {
   }
 
   const o = order.data
+  const open = o.status === "received" || o.status === "ready"
 
   return (
     <div className="flex flex-col gap-4">
@@ -114,11 +136,38 @@ export function OrderPage() {
             <PrinterIcon data-icon="inline-start" />
             Print receipt
           </Button>
+          {can("orders.edit") && open && (
+            <Button variant="outline" nativeButton={false} render={<Link to={`/orders/${o.id}/edit`} />}>
+              <PencilIcon data-icon="inline-start" />
+              Edit
+            </Button>
+          )}
           {can("orders.create") && (
             <Button nativeButton={false} render={<Link to="/orders/new" />}>
               <PlusIcon data-icon="inline-start" />
               New order
             </Button>
+          )}
+          {(can("orders.create") || (can("orders.delete") && open)) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="More actions" />}>
+                <EllipsisIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                {can("orders.create") && (
+                  <DropdownMenuItem render={<Link to={`/orders/new?copy=${o.id}`} />}>
+                    <CopyIcon />
+                    Copy into a new order
+                  </DropdownMenuItem>
+                )}
+                {can("orders.delete") && open && (
+                  <DropdownMenuItem variant="destructive" onClick={() => setCancelling(true)}>
+                    <BanIcon />
+                    Cancel order
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
@@ -131,6 +180,15 @@ export function OrderPage() {
         </div>
       </div>
 
+      <CancelOrderDialog
+        order={o}
+        open={cancelling}
+        onOpenChange={setCancelling}
+        onCancelled={(cancelled) => {
+          order.setData(cancelled)
+          toast.success(`Order ${cancelled.number} cancelled`)
+        }}
+      />
       <MoneyDialog
         open={paying}
         onOpenChange={setPaying}
@@ -243,6 +301,13 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
                 <span className="tabular-nums">{formatMoney(u.amount)}</span>
               </span>
             ))}
+            {line.pieces.map((p, i) =>
+              isEmptyPiece(p) ? null : (
+                <span key={i} className="text-xs text-muted-foreground">
+                  #{i + 1} {pieceSummary(p)}
+                </span>
+              ),
+            )}
           </div>
         ))}
         {o.bag_drop_pieces > 0 && (
@@ -276,12 +341,22 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
         )}
       </div>
 
-      {o.notes && (
+      {(o.notes || o.preferences) && (
         <>
           <div className="my-3 border-t border-dashed" />
-          <div className="text-xs">
-            <span className="font-medium">Notes: </span>
-            {o.notes}
+          <div className="grid gap-1 text-xs">
+            {o.preferences && (
+              <div>
+                <span className="font-medium">Preferences: </span>
+                {o.preferences}
+              </div>
+            )}
+            {o.notes && (
+              <div>
+                <span className="font-medium">Notes: </span>
+                {o.notes}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -311,13 +386,15 @@ function Timeline({ order: o }: { order: Order }) {
             <span className="font-medium">
               {i === 0
                 ? "Order taken"
-                : step.status === "received" && step.stage_name
+                : step.note.startsWith("Edited:")
+                  ? "Order edited"
+                  : step.status === "received" && step.stage_name
                   ? step.stage_name
                   : step.status === "received"
                     ? "Back to Received"
                     : STATUS_LABELS[step.status]}
             </span>
-            {step.note && <span className="text-xs">{step.note}</span>}
+            {step.note && <span className="text-xs">{step.note.replace(/^(Edited|Cancelled): /, "")}</span>}
             <span className="text-xs text-muted-foreground">
               {longDate.format(new Date(step.changed_at))} · {step.changed_by_name}
             </span>

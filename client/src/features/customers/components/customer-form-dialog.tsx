@@ -2,6 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { FormField } from "@/components/form-field"
+import { SelectField } from "@/components/select-field"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import {
@@ -13,12 +14,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
-import { createCustomer, updateCustomer } from "../services/customer.service"
-import type { Customer, CustomerRequest } from "../types"
+import { useRecords } from "@/lib/use-records"
+import { createCustomer, getCustomerOptions, updateCustomer } from "../services/customer.service"
+import type { Customer, CustomerOptions, CustomerRequest } from "../types"
 
-const empty: CustomerRequest = { name: "", phone: "", email: "", address: "", notes: "" }
+const empty: CustomerRequest = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+  notes: "",
+  preferences: {},
+  price_list: null,
+  discount_percent: "0",
+}
 
 type Props = {
   open: boolean
@@ -31,7 +43,7 @@ type Props = {
 export function CustomerFormDialog({ open, onOpenChange, customer, onSaved }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
         {/* key resets the form each time a different customer is opened */}
         {open && (
           <CustomerForm
@@ -56,10 +68,12 @@ function CustomerForm({
   onSaved?: (customer: Customer) => void
 }) {
   const [saving, setSaving] = useState(false)
+  // price lists and preference questions
+  const options = useRecords(getCustomerOptions, null as CustomerOptions | null)
   const [values, setValues] = useState<CustomerRequest>(() => {
     if (!customer) return empty
-    const { name, phone, email, address, notes } = customer
-    return { name, phone, email, address, notes }
+    const { name, phone, email, address, notes, preferences, price_list, discount_percent } = customer
+    return { name, phone, email, address, notes, preferences, price_list, discount_percent: String(Number(discount_percent)) }
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -72,7 +86,8 @@ function CustomerForm({
     setSaving(true)
     setErrors({})
     try {
-      const saved = customer ? await updateCustomer(customer.id, values) : await createCustomer(values)
+      const payload = { ...values, discount_percent: values.discount_percent.trim() || "0" }
+      const saved = customer ? await updateCustomer(customer.id, payload) : await createCustomer(payload)
       toast.success(customer ? "Customer updated" : "Customer added")
       onSaved?.(saved)
       onDone()
@@ -122,9 +137,63 @@ function CustomerForm({
         {(f) => <Textarea {...f} rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} />}
       </FormField>
 
-      <FormField label="Notes" error={errors.notes} hint='Preferences staff should see, e.g. "No starch".'>
+      <FormField label="Notes" error={errors.notes}
+        hint='Filled in on each new order, e.g. "Gutra hanger". The counter can save them from an order too.'>
         {(f) => <Textarea {...f} rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />}
       </FormField>
+
+      {options.data && (
+        <>
+          <Separator />
+          <div className="grid gap-3">
+            <div className="grid gap-0.5">
+              <span className="text-sm font-medium">Preferences</span>
+              <span className="text-xs text-muted-foreground">Shown on every order for this customer.</span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {options.data.preferences.map((pref) => (
+                <FormField key={pref.code} label={pref.name}>
+                  {(f) => (
+                    <SelectField
+                      id={f.id}
+                      value={values.preferences[pref.code] ?? ""}
+                      options={[{ value: "", label: "Any" }, ...pref.options.map((o) => ({ value: o.code, label: o.name }))]}
+                      onValueChange={(v) => set("preferences", { ...values.preferences, [pref.code]: v ?? "" })}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </div>
+            {errors.preferences && <p className="text-xs text-destructive">{errors.preferences}</p>}
+          </div>
+
+          <Separator />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Price list" error={errors.price_list}
+              hint="Their own prices. Items not in it use the default list.">
+              {(f) => (
+                <SelectField
+                  id={f.id}
+                  aria-invalid={f["aria-invalid"]}
+                  value={values.price_list ?? ""}
+                  options={[
+                    { value: "", label: "Default prices" },
+                    ...options.data!.price_lists.filter((p) => !p.is_default).map((p) => ({ value: p.id, label: p.name })),
+                  ]}
+                  onValueChange={(v) => set("price_list", v || null)}
+                />
+              )}
+            </FormField>
+            <FormField label="Discount (%)" error={errors.discount_percent}
+              hint="Taken off every order, no approval needed.">
+              {(f) => (
+                <Input {...f} type="number" inputMode="decimal" min={0} max={100} step={0.5} className="w-28"
+                  value={values.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} />
+              )}
+            </FormField>
+          </div>
+        </>
+      )}
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onDone}>

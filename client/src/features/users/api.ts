@@ -18,6 +18,8 @@ export interface StaffUser {
   full_name: string
   phone: string
   is_active: boolean
+  /** Has an approval PIN (managers type it to approve big discounts and changes to paid orders). */
+  has_pin: boolean
   is_owner: boolean
   roles: UserRoleRow[]
   date_joined: string
@@ -31,6 +33,8 @@ export interface StaffUserInput {
   is_active: boolean
   /** Required when creating; leave empty when editing to keep the current one. */
   password?: string
+  /** Approval PIN: 4–6 digits sets it, null removes it, absent keeps it. */
+  pin?: string | null
   /** branch null = organization-wide. Branch assignments are derived from these. */
   roles: { role: string; branch: string | null }[]
 }

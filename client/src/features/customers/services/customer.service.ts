@@ -4,7 +4,7 @@
 import { ENDPOINTS } from "@/lib/api/endpoints"
 import { http } from "@/lib/api/http"
 import type { Page } from "@/lib/api/http"
-import type { Customer, CustomerRequest } from "../types"
+import type { Customer, CustomerOptions, CustomerRequest } from "../types"
 
 export const getCustomers = () => http.get<Customer[]>(ENDPOINTS.customers.list)
 
@@ -13,6 +13,11 @@ export const searchCustomers = (term: string, pageSize = 8) =>
   http
     .get<Page<Customer>>(ENDPOINTS.customers.list, { params: { search_term: term, page_number: 1, page_size: pageSize } })
     .then((page) => page.items)
+
+export const getCustomer = (id: string) => http.get<Customer>(ENDPOINTS.customers.byId(id))
+
+/** Price lists and preference questions for the customer form. */
+export const getCustomerOptions = () => http.get<CustomerOptions>(ENDPOINTS.customers.options)
 
 export const createCustomer = (payload: CustomerRequest) => http.post<Customer>(ENDPOINTS.customers.list, payload)
 

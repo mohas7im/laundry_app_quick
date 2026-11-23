@@ -2,7 +2,15 @@
 // Each function returns the record(s) themselves (`http` unwraps the response). Nothing is cached.
 import { ENDPOINTS } from "@/lib/api/endpoints"
 import { http } from "@/lib/api/http"
-import type { MoveTarget, Order, OrderListRow, OrderRequest, PosCatalogue, ProductionBoard } from "../types"
+import type {
+  MoveTarget,
+  Order,
+  OrderListRow,
+  OrderRequest,
+  OrderUpdateRequest,
+  PosCatalogue,
+  ProductionBoard,
+} from "../types"
 
 export const getPosCatalogue = () => http.get<PosCatalogue>(ENDPOINTS.pos.catalogue)
 
@@ -12,6 +20,13 @@ export const getOrder = (id: string) => http.get<Order>(ENDPOINTS.orders.byId(id
 
 /** The server prices the order from the price list; its totals are the final ones. */
 export const createOrder = (payload: OrderRequest) => http.post<Order>(ENDPOINTS.orders.list, payload)
+
+/** Change an order not yet collected (re-priced from today's price lists). */
+export const updateOrder = (id: string, payload: OrderUpdateRequest) =>
+  http.put<Order>(ENDPOINTS.orders.byId(id), payload)
+
+/** Cancel an order not yet collected, with nothing paid on it. */
+export const cancelOrder = (id: string, reason: string) => http.post<Order>(ENDPOINTS.orders.cancel(id), { reason })
 
 // ── production board ──
 export const getProductionBoard = () => http.get<ProductionBoard>(ENDPOINTS.production.board)

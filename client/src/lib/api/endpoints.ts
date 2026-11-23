@@ -33,11 +33,12 @@ export const ENDPOINTS = {
   },
   menus: { ...crud("/api/menus"), my: "/api/menus/my/" },
   users: crud("/api/users"),
-  customers: crud("/api/customers"),
+  customers: { ...crud("/api/customers"), options: "/api/customers/options/" },
   orders: {
     ...crud("/api/orders"),
     pay: (id: Id) => `/api/orders/${id}/pay/`,
     refund: (id: Id) => `/api/orders/${id}/refund/`,
+    cancel: (id: Id) => `/api/orders/${id}/cancel/`,
   },
   payments: { list: "/api/payments/" },
   dashboard: "/api/dashboard/",

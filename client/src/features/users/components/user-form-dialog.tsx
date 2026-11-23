@@ -58,6 +58,8 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
   const [fullName, setFullName] = useState(user?.full_name ?? "")
   const [phone, setPhone] = useState(user?.phone ?? "")
   const [password, setPassword] = useState("")
+  const [pin, setPin] = useState("")
+  const [removePin, setRemovePin] = useState(false)
   const [isActive, setIsActive] = useState(user?.is_active ?? true)
   const [rows, setRows] = useState<RoleRow[]>(() =>
     user?.roles.length
@@ -99,6 +101,7 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
           is_active: isActive,
           roles: rows.map((r) => ({ role: r.role, branch: r.scope === ALL_BRANCHES ? null : r.scope })),
           ...(password ? { password } : {}),
+          ...(removePin ? { pin: null } : pin ? { pin } : {}),
         },
       }).unwrap()
       toast.success(user ? "User updated" : "User created")
@@ -162,6 +165,29 @@ function UserForm({ user, onDone }: { user?: StaffUser | null; onDone: () => voi
             )}
           </Field>
         </div>
+
+        <Field data-invalid={!!errors.pin || undefined}>
+          <FieldLabel htmlFor="user-pin">Approval PIN</FieldLabel>
+          <div className="flex items-center gap-2">
+            <Input id="user-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={6}
+              className="w-32 tracking-widest" placeholder={user?.has_pin && !removePin ? "••••" : ""}
+              disabled={removePin} value={pin} aria-invalid={!!errors.pin || undefined}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+            {user?.has_pin && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setRemovePin((on) => !on); setPin("") }}>
+                {removePin ? "Keep PIN" : "Remove PIN"}
+              </Button>
+            )}
+          </div>
+          {errors.pin ? (
+            <FieldError>{errors.pin}</FieldError>
+          ) : (
+            <FieldDescription>
+              4–6 digits. Managers type it at the counter to approve a big discount or a change to a paid order.
+              {user?.has_pin ? " Leave empty to keep the current PIN." : ""}
+            </FieldDescription>
+          )}
+        </Field>
 
         <FieldSet>
           <FieldLegend variant="label">Roles</FieldLegend>
