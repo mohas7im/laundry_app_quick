@@ -7,6 +7,7 @@ from masters.models import CommonMaster
 from masters.registry import ITEM_CATEGORY, PRICING_TYPE, UPCHARGE_TYPE
 from masters.serializers import master_field
 from .models import Item, Price, PriceList, Service, Upcharge
+from .prices import set_price
 
 
 class UniqueNameMixin:
@@ -29,9 +30,9 @@ class ServiceSerializer(UniqueNameMixin, serializers.ModelSerializer):
 
     class Meta:
         model = Service
-        fields = ['id', 'name', 'sort_order', 'is_active', 'created_at']
+        fields = ['id', 'name', 'ready_days', 'sort_order', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
-        extra_kwargs = {'name': {'validators': []}}
+        extra_kwargs = {'name': {'validators': []}, 'ready_days': {'min_value': 0, 'max_value': 60}}
 
 
 class ItemSerializer(UniqueNameMixin, serializers.ModelSerializer):
@@ -45,10 +46,10 @@ class ItemSerializer(UniqueNameMixin, serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ['id', 'name', 'category', 'category_name', 'pricing_type', 'pricing_type_name', 'sort_order',
-                  'is_active', 'created_at']
+        fields = ['id', 'name', 'category', 'category_name', 'pricing_type', 'pricing_type_name', 'pieces',
+                  'sort_order', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
-        extra_kwargs = {'name': {'validators': []}}
+        extra_kwargs = {'name': {'validators': []}, 'pieces': {'min_value': 1, 'max_value': 20}}
 
     def validate(self, attrs):
         if self.instance is None:  # defaults for a new item
@@ -161,13 +162,8 @@ class PriceGridSaveSerializer(serializers.Serializer):
         return cells
 
     @transaction.atomic
-    def save(self, price_list):
+    def save(self, price_list, user=None):
         for cell in self.validated_data['prices']:
-            where = {'price_list': price_list, 'item': cell['item'], 'service': cell['service']}
-            if cell['price'] is None:
-                Price.objects.filter(**where).delete()
-            else:
-                Price.objects.update_or_create(**where, defaults={
-                    'price': cell['price'], 'express_price': cell['express_price'],
-                    'min_price': cell['min_price'], 'extra_days': cell['extra_days'],
-                })
+            set_price(price_list, cell['item'], cell['service'], price=cell['price'],
+                      express_price=cell['express_price'], min_price=cell['min_price'],
+                      extra_days=cell['extra_days'], user=user)

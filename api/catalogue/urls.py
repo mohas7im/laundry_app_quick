@@ -1,7 +1,15 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import ItemViewSet, PriceGridView, PriceListViewSet, ServiceViewSet, UpchargeViewSet
+from .views import (
+    CatalogueImportView,
+    ItemViewSet,
+    PriceGridView,
+    PriceHistoryView,
+    PriceListViewSet,
+    ServiceViewSet,
+    UpchargeViewSet,
+)
 
 router = DefaultRouter(trailing_slash=True)
 router.register('services', ServiceViewSet, basename='service')
@@ -11,4 +19,6 @@ router.register('upcharges', UpchargeViewSet, basename='upcharge')
 
 urlpatterns = router.urls + [
     path('prices/<uuid:price_list_id>/', PriceGridView.as_view(), name='price-grid'),
+    path('prices/<uuid:price_list_id>/history/', PriceHistoryView.as_view(), name='price-history'),
+    path('catalogue/import/', CatalogueImportView.as_view(), name='catalogue-import'),
 ]

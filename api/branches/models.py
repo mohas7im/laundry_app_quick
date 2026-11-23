@@ -14,6 +14,12 @@ class Branch(models.Model):
     phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
+    # opening hours and the ready-by calendar (orders/pricing.py suggested_ready_by)
+    opens_at = models.TimeField(null=True, blank=True)
+    closes_at = models.TimeField(null=True, blank=True, help_text='Ready-by times are never after closing.')
+    cutoff_time = models.TimeField(null=True, blank=True,
+                                   help_text='Orders taken after this count from the next day.')
+    closed_weekdays = models.JSONField(default=list, blank=True, help_text='0 = Monday … 6 = Sunday.')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -28,6 +34,20 @@ class Branch(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.code})'
+
+
+class BranchHoliday(models.Model):
+    """A day the branch is closed: no order is promised for it (table `branch_holidays`)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='holidays')
+    date = models.DateField()
+    name = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        db_table = 'branch_holidays'
+        ordering = ['date']
+        constraints = [models.UniqueConstraint(fields=['branch', 'date'], name='branch_holidays_uq')]
 
 
 class UserBranchAssignment(models.Model):

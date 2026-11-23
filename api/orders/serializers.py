@@ -31,6 +31,27 @@ def order_settings():
     }
 
 
+def branch_calendar(branch_id):
+    """The branch's ready-by rules: cut-off, closing time, closed weekdays, holidays from today."""
+    from branches.models import Branch, BranchHoliday
+
+    branch = Branch.objects.filter(pk=branch_id).first()
+    if branch is None:
+        return {}
+    return {
+        'cutoff': branch.cutoff_time,
+        'closes_at': branch.closes_at,
+        'closed_weekdays': [d for d in branch.closed_weekdays if isinstance(d, int) and 0 <= d <= 6],
+        'holidays': list(BranchHoliday.objects.filter(branch=branch, date__gte=timezone.localdate())
+                         .values_list('date', flat=True)[:400]),
+    }
+
+
+def ready_days_for(services, default_days):
+    """The slowest service of the order sets its days (a service without its own uses the default)."""
+    return max((default_days if s.ready_days is None else s.ready_days for s in services), default=default_days)
+
+
 def default_price_list():
     return PriceList.objects.filter(is_default=True, is_active=True).first()
 
@@ -88,7 +109,7 @@ class LineInputSerializer(serializers.Serializer):
         ]
         while pieces and not any(pieces[-1].values()):
             pieces.pop()
-        if len(pieces) > (int(attrs['quantity']) if is_unit else 1):
+        if len(pieces) > (int(attrs['quantity']) * attrs['item'].pieces if is_unit else 1):
             raise serializers.ValidationError({'pieces': 'There are more piece notes than pieces.'})
         attrs['pieces'] = pieces
         return attrs
@@ -212,8 +233,10 @@ class OrderInputSerializer(serializers.Serializer):
         now = timezone.localtime()
         if attrs['ready_by'] is None:
             attrs['ready_by'] = suggested_ready_by(
-                now, express=attrs['is_express'], extra_days=extra_days, ready_days=conf['ready_days'],
-                express_ready_days=conf['express_ready_days'], ready_time=conf['ready_time'])
+                now, express=attrs['is_express'], extra_days=extra_days,
+                ready_days=ready_days_for([l['service'] for l in attrs['lines']], conf['ready_days']),
+                express_ready_days=conf['express_ready_days'], ready_time=conf['ready_time'],
+                **branch_calendar(self.context['branch_id']))
         elif attrs['ready_by'] <= now and not (self.order and attrs['ready_by'] == self.order.ready_by):
             errors['ready_by'] = 'Choose a time in the future.'
 
@@ -255,7 +278,8 @@ class OrderInputSerializer(serializers.Serializer):
             order_line = OrderLine.objects.create(
                 order=order, item=line['item'], service=line['service'], item_name=line['item'].name,
                 service_name=line['service'].name, pricing_type=line['item'].pricing_type.code,
-                quantity=line['quantity'], unit_price=unit_price, min_price=min_price,
+                quantity=line['quantity'], pieces_per_item=line['item'].pieces, unit_price=unit_price,
+                min_price=min_price,
                 upcharge_total=result.upcharge_total, line_total=result.total, notes=line['notes'].strip(),
                 pieces=line['pieces'], position=position,
             )
@@ -447,6 +471,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     def get_summary(self, order):
         """What is in the order, one entry per line: "Kandura × 2 (Wash & Iron)"."""
         return [{'service': str(l.service_id), 'service_name': l.service_name, 'item_name': l.item_name,
+                 'pieces_per_item': l.pieces_per_item,
                  'quantity': quantity_text(l.quantity), 'pricing_type': l.pricing_type}
                 for l in order.lines.all()]
 
@@ -458,9 +483,10 @@ class OrderListSerializer(serializers.ModelSerializer):
         return order.ready_at <= self.context['cutoff']
 
     def get_pieces(self, order):
-        """Pieces handed in: unit items counted, kg/m² lines count as one bag; bag drop adds its count."""
+        """Pieces handed in: unit items × their pieces (a 2-piece suit = 2), kg/m² lines count as one bag;
+        bag drop adds its count."""
         lines = order.lines.all()
-        counted = sum(int(l.quantity) if l.pricing_type == 'unit' else 1 for l in lines)
+        counted = sum(int(l.quantity) * l.pieces_per_item if l.pricing_type == 'unit' else 1 for l in lines)
         return counted + order.bag_drop_pieces
 
 

@@ -103,6 +103,7 @@ class OrderLine(models.Model):
     service_name = models.CharField(max_length=80)
     pricing_type = models.CharField(max_length=10)
     quantity = models.DecimalField(max_digits=8, decimal_places=3, help_text='Pieces, kg or m².')
+    pieces_per_item = models.PositiveSmallIntegerField(default=1, help_text="A copy of the item's pieces (tags).")
     unit_price = models.DecimalField(**MONEY)
     min_price = models.DecimalField(**MONEY, null=True, blank=True)
     upcharge_total = models.DecimalField(**MONEY, default=0)

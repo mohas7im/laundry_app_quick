@@ -23,6 +23,7 @@ from .serializers import (
     OrderCancelSerializer,
     OrderCreateSerializer,
     OrderSearchSerializer,
+    branch_calendar,
     deadstock_cutoff,
     OrderUpdateSerializer,
     OrderListSerializer,
@@ -163,13 +164,15 @@ class PosCatalogueView(APIView):
                  .exclude(order__status=Order.Status.CANCELLED)
                  .values('item', 'service').annotate(count=Count('id')))
         limit = discount_limit(request.user, branch_id)
+        calendar = branch_calendar(branch_id)
         data = {
             'price_list': {'id': str(price_list.id), 'name': price_list.name},
             'price_lists': [{'id': str(p.id), 'name': p.name} for p in PriceList.objects.filter(is_active=True)],
-            'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
+            'services': [{'id': str(s.id), 'name': s.name, 'ready_days': s.ready_days}
+                         for s in Service.objects.filter(is_active=True)],
             'items': [
                 {'id': str(i.id), 'name': i.name, 'category': i.category.code, 'category_name': i.category.name,
-                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name}
+                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name, 'pieces': i.pieces}
                 for i in Item.objects.filter(is_active=True).select_related('category', 'pricing_type')
             ],
             # every active price list: a customer with their own list uses it, the default for the rest
@@ -199,6 +202,11 @@ class PosCatalogueView(APIView):
                 'ready_days': conf['ready_days'],
                 'express_ready_days': conf['express_ready_days'],
                 'ready_time': conf['ready_time'].strftime('%H:%M'),
+                # the branch's calendar for the ready-by suggestion (same rules as the server)
+                'cutoff_time': calendar['cutoff'].strftime('%H:%M') if calendar.get('cutoff') else None,
+                'closes_at': calendar['closes_at'].strftime('%H:%M') if calendar.get('closes_at') else None,
+                'closed_weekdays': calendar.get('closed_weekdays', []),
+                'holidays': [d.isoformat() for d in calendar.get('holidays', [])],
             },
         }
         return BaseResult.ok(data, 'Catalogue retrieved successfully.').to_response()
@@ -208,7 +216,8 @@ class PosCatalogueView(APIView):
 
 def _open_orders(request, *statuses):
     lines = Prefetch('lines', queryset=OrderLine.objects.only(
-        'id', 'order_id', 'quantity', 'pricing_type', 'item_name', 'service_id', 'service_name', 'position'))
+        'id', 'order_id', 'quantity', 'pieces_per_item', 'pricing_type', 'item_name', 'service_id', 'service_name',
+        'position'))
     return (Order.objects.filter(branch_id=get_active_branch_id(request), status__in=statuses)
             .select_related('customer', 'stage', 'created_by').prefetch_related(lines))
 

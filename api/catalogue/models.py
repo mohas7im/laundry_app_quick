@@ -25,6 +25,8 @@ class Service(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=80)
+    ready_days = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Days to get it ready (normal orders); empty = the shop's default.")
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -54,6 +56,7 @@ class Item(models.Model):
     pricing_type = models.ForeignKey('masters.CommonMaster', on_delete=models.PROTECT, related_name='+',
                                      limit_choices_to={'type__code': 'PRICING_TYPE'},
                                      help_text='How it is charged: per item, per kg or per m².')
+    pieces = models.PositiveSmallIntegerField(default=1, help_text='Pieces (tags) per item, e.g. a 2-piece suit = 2.')
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -111,6 +114,34 @@ class Price(models.Model):
 
     def __str__(self):
         return f'{self.item} / {self.service} @ {self.price_list}: {self.price}'
+
+
+class PriceChange(models.Model):
+    """
+    Price history (table `price_history`): every change to a price, from the grid or an
+    import. A new price has no old values; a removed one has no new values.
+    """
+
+    class Source(models.TextChoices):
+        GRID = 'grid', 'Prices page'
+        IMPORT = 'import', 'CSV import'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    price_list = models.ForeignKey(PriceList, on_delete=models.CASCADE, related_name='changes')
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='price_changes')
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='price_changes')
+    old_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    new_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    old_express_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    new_express_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=10, choices=Source.choices)
+    changed_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, related_name='+')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'price_history'
+        ordering = ['-changed_at']
+        indexes = [models.Index(fields=['price_list', '-changed_at'])]
 
 
 class Upcharge(models.Model):

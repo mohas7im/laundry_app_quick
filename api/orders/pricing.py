@@ -83,14 +83,28 @@ def order_totals(line_totals, discount_type: str = '', discount_value: Decimal =
 
 
 def suggested_ready_by(now: datetime, *, express: bool, extra_days: int, ready_days: int,
-                       express_ready_days: int, ready_time: time) -> datetime:
+                       express_ready_days: int, ready_time: time, cutoff: time | None = None,
+                       closes_at: time | None = None, closed_weekdays=(), holidays=()) -> datetime:
     """
     The ready-by date the counter starts with (staff may change it):
-    today + (express days or normal days) + the largest extra days of the order's items,
-    at the shop's ready time. If that is already past (express late in the day), the next day.
+
+    - counting starts today, or tomorrow when the order comes in after the branch's cut-off;
+    - + the days (express, or the slowest service of the order) + the largest extra days of its items;
+    - at the ready time, but never after the branch closes;
+    - if that is already past (express late in the day), the next day;
+    - never on a closed weekday (0 = Monday) or a holiday: the next open day instead.
     """
+    start = now.date()
+    if cutoff is not None and now.time() >= cutoff:
+        start += timedelta(days=1)
     days = (express_ready_days if express else ready_days) + extra_days
-    ready = datetime.combine(now.date() + timedelta(days=days), ready_time, tzinfo=now.tzinfo)
+    at = min(ready_time, closes_at) if closes_at else ready_time
+    ready = datetime.combine(start + timedelta(days=days), at, tzinfo=now.tzinfo)
     if ready <= now:
+        ready += timedelta(days=1)
+    closed, off = set(closed_weekdays), set(holidays)
+    for _ in range(60):  # a shop is never closed for two months in a row
+        if ready.weekday() not in closed and ready.date() not in off:
+            break
         ready += timedelta(days=1)
     return ready

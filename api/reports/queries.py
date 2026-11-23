@@ -40,7 +40,7 @@ def _orders(branch_id, start, end):
 
 def pieces_of(orders):
     lines = OrderLine.objects.filter(order__in=orders)
-    unit = lines.filter(pricing_type='unit').aggregate(n=Sum('quantity'))['n'] or 0
+    unit = lines.filter(pricing_type='unit').aggregate(n=Sum(F('quantity') * F('pieces_per_item')))['n'] or 0
     weighed = lines.exclude(pricing_type='unit').count()
     bags = orders.aggregate(n=Sum('bag_drop_pieces'))['n'] or 0
     return int(unit) + weighed + bags
@@ -180,9 +180,9 @@ def order_rows(branch_id, start, end):
     orders = (Order.objects.filter(branch_id=branch_id, created_at__gte=start, created_at__lt=end)
               .select_related('customer', 'created_by', 'stage').order_by('created_at'))
     pieces = defaultdict(int)
-    for order_id, pricing_type, quantity in OrderLine.objects.filter(order__in=orders) \
-            .values_list('order_id', 'pricing_type', 'quantity'):
-        pieces[order_id] += int(quantity) if pricing_type == 'unit' else 1
+    for order_id, pricing_type, quantity, per_item in OrderLine.objects.filter(order__in=orders) \
+            .values_list('order_id', 'pricing_type', 'quantity', 'pieces_per_item'):
+        pieces[order_id] += int(quantity) * per_item if pricing_type == 'unit' else 1
     for o in orders:
         yield {
             'Order': o.number,

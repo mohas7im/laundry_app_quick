@@ -7,7 +7,7 @@ from .serializers import BranchSerializer
 
 
 class BranchViewSet(ResultViewSetMixin, viewsets.ModelViewSet):
-    queryset = Branch.objects.all()
+    queryset = Branch.objects.prefetch_related('holidays')
     search_fields = ['name', 'code', 'phone', 'email']
     serializer_class = BranchSerializer
     # the users form also needs the branch list

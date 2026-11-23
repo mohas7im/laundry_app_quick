@@ -1,11 +1,12 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.views import APIView
 
-from accounts.access import menu_permission
+from accounts.access import menu_permission, org_permission
 from common.drf import ResultViewSetMixin
 from common.results import BaseResult, ErrorCode
-from .models import Item, Price, PriceList, Service, Upcharge
+from .importer import ImportError_, preview_or_import
+from .models import Item, Price, PriceChange, PriceList, Service, Upcharge
 from .serializers import (
     ItemSerializer,
     PriceGridSaveSerializer,
@@ -72,7 +73,7 @@ class PriceGridView(APIView):
         price_list = get_object_or_404(PriceList, pk=price_list_id)
         serializer = PriceGridSaveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(price_list)
+        serializer.save(price_list, user=request.user)
         return BaseResult.ok(self._grid(price_list), 'Prices saved successfully.').to_response()
 
     @staticmethod
@@ -85,7 +86,7 @@ class PriceGridView(APIView):
             'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
             'items': [
                 {'id': str(i.id), 'name': i.name, 'category': i.category.code, 'category_name': i.category.name,
-                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name}
+                 'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name, 'pieces': i.pieces}
                 for i in Item.objects.filter(is_active=True).select_related('category', 'pricing_type')
             ],
             'prices': [
@@ -97,3 +98,77 @@ class PriceGridView(APIView):
                 for p in Price.objects.filter(price_list=price_list)
             ],
         }
+
+
+class PriceHistoryView(APIView):
+    """
+    GET /api/prices/<price_list_id>/history/?item=&service= (prices.view) — the latest
+    200 price changes of a price list, newest first; item / service narrow it to one cell.
+    """
+
+    permission_classes = [menu_permission('prices')]
+
+    def get(self, request, price_list_id):
+        price_list = get_object_or_404(PriceList, pk=price_list_id)
+        changes = price_list.changes.select_related('item', 'service', 'changed_by')
+        for key in ('item', 'service'):
+            value = request.query_params.get(key)
+            if value:
+                changes = changes.filter(**{f'{key}_id': value})
+
+        def money(value):
+            return None if value is None else str(value)
+
+        data = [
+            {'id': str(c.id), 'item': str(c.item_id), 'item_name': c.item.name, 'service': str(c.service_id),
+             'service_name': c.service.name, 'old_price': money(c.old_price), 'new_price': money(c.new_price),
+             'old_express_price': money(c.old_express_price), 'new_express_price': money(c.new_express_price),
+             'source': c.source, 'source_name': c.get_source_display(),
+             'changed_by_name': c.changed_by.full_name if c.changed_by else '', 'changed_at': c.changed_at}
+            for c in changes[:200]
+        ]
+        return BaseResult.ok(data, 'Price history retrieved successfully.').to_response()
+
+
+class SectionChoiceSerializer(serializers.Serializer):
+    section = serializers.CharField(max_length=120)
+    service = serializers.CharField(max_length=80, allow_blank=True)
+    price_list = serializers.ChoiceField(choices=['main', 'online'])
+
+
+class CatalogueImportSerializer(serializers.Serializer):
+    csv = serializers.CharField(max_length=2_000_000, trim_whitespace=False)
+    sections = SectionChoiceSerializer(many=True, required=False, default=list)
+    main_price_list = serializers.PrimaryKeyRelatedField(queryset=PriceList.objects.all(), required=False,
+                                                         allow_null=True, default=None)
+    online_price_list = serializers.CharField(max_length=80, required=False, default='Online')
+    commit = serializers.BooleanField(default=False)
+
+
+class CatalogueImportView(APIView):
+    """
+    POST /api/catalogue/import/ (prices.edit) — the price list from a CSV file.
+    commit=false: a preview (sections with their suggested service and price list, what
+    would be created and changed, errors, warnings). commit=true: the import, with the
+    sections as confirmed; nothing is written while there are errors.
+    """
+
+    permission_classes = [org_permission('prices.edit')]
+
+    def post(self, request):
+        serializer = CatalogueImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = preview_or_import(data['csv'], sections=data['sections'], main_list=data['main_price_list'],
+                                       online_list_name=data['online_price_list'], user=request.user,
+                                       commit=data['commit'])
+        except ImportError_ as e:
+            raise serializers.ValidationError({'csv': str(e)})
+        if result['imported']:
+            message = 'Price list imported.'
+        elif data['commit']:
+            message = 'Nothing was imported: fix the errors in the file first.'
+        else:
+            message = 'Preview ready.'
+        return BaseResult.ok(result, message).to_response()
