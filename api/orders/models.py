@@ -54,6 +54,9 @@ class Order(models.Model):
     is_express = models.BooleanField(default=False)
     ready_by = models.DateTimeField()
     notes = models.TextField(blank=True)
+    preferences = models.CharField(max_length=300, blank=True,
+                                   help_text="The customer's preferences when the order was taken, "
+                                             'e.g. "Shirt: Boxed / Starch: No starch".')
     bag_drop_pieces = models.PositiveIntegerField(
         default=0, help_text='Bag drop: pieces counted at the counter, items detailed later.')
 
@@ -62,6 +65,9 @@ class Order(models.Model):
     discount_value = models.DecimalField(**MONEY, default=0, help_text='The amount or percent entered.')
     discount_amount = models.DecimalField(**MONEY, default=0)
     discount_reason = models.CharField(max_length=200, blank=True)
+    discount_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True,
+                                             blank=True, related_name='+',
+                                             help_text="The manager whose PIN allowed a discount over the limit.")
     total = models.DecimalField(**MONEY)
     vat_amount = models.DecimalField(**MONEY, help_text='VAT included in the total.')
     paid_amount = models.DecimalField(**MONEY, default=0)
@@ -100,6 +106,9 @@ class OrderLine(models.Model):
     upcharge_total = models.DecimalField(**MONEY, default=0)
     line_total = models.DecimalField(**MONEY)
     notes = models.CharField(max_length=200, blank=True)
+    # per-piece tags: [{"colours": ["Navy"], "damage": ["Button missing"], "stains": [], "note": ""}, …]
+    # (names copied from the ITEM_COLOUR / ITEM_DAMAGE / ITEM_STAIN lists; piece 1 first)
+    pieces = models.JSONField(default=list, blank=True)
     position = models.PositiveSmallIntegerField(default=0)
 
     class Meta:

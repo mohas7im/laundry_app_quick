@@ -1,8 +1,13 @@
 import re
+from decimal import Decimal
 
 from rest_framework import serializers
 
+from catalogue.models import PriceList
+from masters.models import CommonMaster
+from masters.registry import PREFERENCE_TYPES
 from .models import Customer
+from .preferences import preferences_text
 
 
 def normalize_phone(value):
@@ -16,10 +21,18 @@ def normalize_phone(value):
 class CustomerSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source='branch.name', read_only=True)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True, default=0)
+    preferences = serializers.DictField(child=serializers.CharField(allow_blank=True), required=False)
+    preferences_text = serializers.SerializerMethodField()
+    price_list = serializers.PrimaryKeyRelatedField(queryset=PriceList.objects.filter(is_active=True),
+                                                    allow_null=True, required=False)
+    price_list_name = serializers.CharField(source='price_list.name', read_only=True, default='')
+    discount_percent = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal('0'),
+                                                max_value=Decimal('100'), required=False)
 
     class Meta:
         model = Customer
-        fields = ['id', 'name', 'phone', 'email', 'address', 'notes', 'branch', 'branch_name', 'balance',
+        fields = ['id', 'name', 'phone', 'email', 'address', 'notes', 'preferences', 'preferences_text',
+                  'price_list', 'price_list_name', 'discount_percent', 'branch', 'branch_name', 'balance',
                   'created_at', 'updated_at']
         # branch: set from the active branch on create, never changed
         read_only_fields = ['id', 'branch', 'branch_name', 'balance', 'created_at', 'updated_at']
@@ -49,3 +62,20 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         return value.strip().lower()
+
+    def get_preferences_text(self, customer):
+        return preferences_text(customer.preferences)
+
+    def validate_preferences(self, value):
+        """{"PREF_SHIRT": "boxed"}; an empty value removes that preference."""
+        unknown = sorted(set(value) - set(PREFERENCE_TYPES))
+        if unknown:
+            raise serializers.ValidationError(f'Unknown preferences: {", ".join(unknown)}.')
+        chosen = {k: v for k, v in value.items() if v}
+        current = getattr(self.instance, 'preferences', None) or {}
+        allowed = set(CommonMaster.objects.filter(type__code__in=list(chosen), is_active=True)
+                      .values_list('type__code', 'code'))
+        for key, code in chosen.items():
+            if (key, code) not in allowed and current.get(key) != code:  # a hidden value stays if unchanged
+                raise serializers.ValidationError(f'"{code}" is not an option of {key}.')
+        return chosen

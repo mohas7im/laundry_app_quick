@@ -31,6 +31,9 @@ class User(AbstractBaseUser):
     password = models.CharField(max_length=255, db_column='password_hash')
     phone = models.CharField(max_length=30, blank=True)
     is_active = models.BooleanField(default=True)
+    # approval PIN (a manager types it to approve a big discount or a change to a paid order);
+    # an HMAC of the PIN, see accounts/pins.py
+    pin_hash = models.CharField(max_length=64, blank=True)
     date_joined = models.DateTimeField(default=timezone.now, db_column='created_at')
 
     objects = UserManager()

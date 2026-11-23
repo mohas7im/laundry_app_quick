@@ -1,21 +1,27 @@
+from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.views import APIView
 
 from accounts.access import branch_menu_permission, branch_permission, get_active_branch, get_active_branch_id
-from catalogue.models import Item, Price, Service, Upcharge
+from catalogue.models import Item, Price, PriceList, Service, Upcharge
 from common.drf import ResultViewSetMixin
 from common.results import BaseResult, ErrorCode
 from masters.models import CommonMaster
-from masters.registry import DISCOUNT_TYPE, ORDER_NOTE, PAYMENT_METHOD
+from customers.preferences import preference_lists
+from masters.registry import DISCOUNT_TYPE, ITEM_COLOUR, ITEM_DAMAGE, ITEM_STAIN, ORDER_NOTE, PAYMENT_METHOD
+from .approval import discount_limit
 from .models import Order, OrderLine, OrderStatusHistory, Payment
 from .payments import PaySerializer, RefundSerializer, SettleSerializer, outstanding_orders
 from .workflow import OPEN, CollectSerializer, MoveSerializer, active_stages
 from .serializers import (
+    OrderCancelSerializer,
     OrderCreateSerializer,
+    OrderUpdateSerializer,
     OrderListSerializer,
     OrderSerializer,
     default_price_list,
@@ -26,8 +32,9 @@ from .serializers import (
 class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
                    mixins.CreateModelMixin, viewsets.GenericViewSet):
     """
-    /api/orders/ — orders of the ACTIVE branch (counter work: orders.view / orders.create
-    from the access token). Editing and cancelling come with the production module.
+    /api/orders/ — orders of the ACTIVE branch (counter work, permissions from the access token):
+    GET orders.view, POST orders.create, PUT (edit, with a reason) orders.edit.
+    Cancelling: POST /api/orders/<id>/cancel/ (orders.delete).
     """
 
     permission_classes = [branch_menu_permission('orders')]
@@ -38,7 +45,7 @@ class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMod
         history = Prefetch('history', queryset=OrderStatusHistory.objects.select_related('changed_by'))
         payments = Prefetch('payments', queryset=Payment.objects.select_related('received_by'))
         qs = (Order.objects.filter(branch_id=get_active_branch_id(self.request))
-              .select_related('customer', 'branch', 'price_list', 'created_by', 'stage')
+              .select_related('customer', 'branch', 'price_list', 'created_by', 'stage', 'discount_approved_by')
               .prefetch_related(lines, history, payments))
         status_filter = self.request.query_params.get('status')  # ?status=ready or ?status=received,ready
         if status_filter:
@@ -49,12 +56,23 @@ class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMod
         return OrderListSerializer if self.action == 'list' else OrderSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = OrderCreateSerializer(data=request.data)
+        serializer = OrderCreateSerializer(data=request.data, context=self._input_context())
         serializer.is_valid(raise_exception=True)
         order = serializer.save(branch=get_active_branch(request), user=request.user)
         order = self.get_queryset().get(pk=order.pk)
         return BaseResult.ok(OrderSerializer(order).data, f'Order {order.number} created.') \
             .to_response(status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        order = self.get_object()
+        serializer = OrderUpdateSerializer(data=request.data, context={**self._input_context(), 'order': order})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        order = self.get_queryset().get(pk=order.pk)
+        return BaseResult.ok(OrderSerializer(order).data, f'Order {order.number} updated.').to_response()
+
+    def _input_context(self):
+        return {'user': self.request.user, 'branch_id': get_active_branch_id(self.request)}
 
 
 class PosCatalogueView(APIView):
@@ -82,20 +100,31 @@ class PosCatalogueView(APIView):
             return [{'code': m.code, 'name': m.name} for m in CommonMaster.of(type_code).filter(is_active=True)]
 
         conf = order_settings()
+        branch_id = get_active_branch_id(request)
+        # most used first: lines per item and service at this branch over the last 90 days
+        since = timezone.now() - timedelta(days=90)
+        usage = (OrderLine.objects.filter(order__branch_id=branch_id, order__created_at__gte=since)
+                 .exclude(order__status=Order.Status.CANCELLED)
+                 .values('item', 'service').annotate(count=Count('id')))
+        limit = discount_limit(request.user, branch_id)
         data = {
             'price_list': {'id': str(price_list.id), 'name': price_list.name},
+            'price_lists': [{'id': str(p.id), 'name': p.name} for p in PriceList.objects.filter(is_active=True)],
             'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
             'items': [
                 {'id': str(i.id), 'name': i.name, 'category': i.category.code, 'category_name': i.category.name,
                  'pricing_type': i.pricing_type.code, 'pricing_type_name': i.pricing_type.name}
                 for i in Item.objects.filter(is_active=True).select_related('category', 'pricing_type')
             ],
+            # every active price list: a customer with their own list uses it, the default for the rest
             'prices': [
-                {'item': str(p.item_id), 'service': str(p.service_id), 'price': money(p.price),
-                 'express_price': money(p.express_price), 'min_price': money(p.min_price),
+                {'price_list': str(p.price_list_id), 'item': str(p.item_id), 'service': str(p.service_id),
+                 'price': money(p.price), 'express_price': money(p.express_price), 'min_price': money(p.min_price),
                  'extra_days': p.extra_days}
-                for p in Price.objects.filter(price_list=price_list, item__is_active=True, service__is_active=True)
+                for p in Price.objects.filter(price_list__is_active=True, item__is_active=True,
+                                              service__is_active=True)
             ],
+            'usage': [{'item': str(u['item']), 'service': str(u['service']), 'count': u['count']} for u in usage],
             'upcharges': [
                 {'id': str(u.id), 'name': u.name, 'charge_type': u.charge_type.code, 'amount': str(u.amount)}
                 for u in Upcharge.objects.filter(is_active=True).select_related('charge_type')
@@ -104,6 +133,11 @@ class PosCatalogueView(APIView):
             'payment_methods': masters(PAYMENT_METHOD),
             'discount_types': masters(DISCOUNT_TYPE),
             'order_notes': masters(ORDER_NOTE),
+            'piece_tags': {'colours': masters(ITEM_COLOUR), 'damage': masters(ITEM_DAMAGE),
+                           'stains': masters(ITEM_STAIN)},
+            'preferences': preference_lists(),
+            # the biggest discount this user may give without a manager (null = no limit)
+            'discount_limit': None if limit is None else str(limit),
             'settings': {
                 'vat_rate': str(conf['vat_rate']),
                 'ready_days': conf['ready_days'],
@@ -190,6 +224,19 @@ def _branch_order(request, order_id):
 def _order_detail(request, order_id):
     view = OrderViewSet(request=request, format_kwarg=None)
     return OrderSerializer(view.get_queryset().get(pk=order_id)).data
+
+
+class OrderCancelView(APIView):
+    """POST /api/orders/<id>/cancel/ {reason} — cancel an order that hasn't been collected (orders.delete)."""
+
+    permission_classes = [branch_permission('orders.delete')]
+
+    def post(self, request, order_id):
+        order = _branch_order(request, order_id)
+        serializer = OrderCancelSerializer(data=request.data, context={'order': order})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return BaseResult.ok(_order_detail(request, order.pk), f'Order {order.number} cancelled.').to_response()
 
 
 class OrderPayView(APIView):

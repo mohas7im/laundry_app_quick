@@ -103,7 +103,8 @@ class OrderApiTests(OrderFixture):
         # 3 × 8.50 + 5 stain = 30.50; 2.5 kg × 12 = 30 (= the 30 minimum) → 60.50
         self.assertEqual([l['line_total'] for l in order['lines']], ['30.50', '30.00'])
         self.assertEqual([l['quantity'] for l in order['lines']], ['3', '2.5'])
-        self.assertEqual(order['lines'][0]['upcharges'], [{'name': 'Stain removal', 'amount': '5.00'}])
+        self.assertEqual(order['lines'][0]['upcharges'],
+                         [{'upcharge': str(self.stain.id), 'name': 'Stain removal', 'amount': '5.00'}])
         self.assertEqual((order['subtotal'], order['total'], order['vat_amount']), ('60.50', '60.50', '2.88'))
         self.assertEqual((order['paid_amount'], order['balance']), ('20.00', '40.50'))
         self.assertEqual((order['status'], order['pieces'], order['branch_code']), ('received', 4, 'DXB1'))

@@ -26,7 +26,8 @@ class RoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Role
-        fields = ['id', 'name', 'description', 'permission_count', 'user_count', 'created_at']
+        fields = ['id', 'name', 'description', 'max_discount_percent', 'permission_count', 'user_count',
+                  'created_at']
         read_only_fields = ['id', 'permission_count', 'user_count', 'created_at']
 
     def get_permission_count(self, obj):
@@ -34,6 +35,11 @@ class RoleSerializer(serializers.ModelSerializer):
 
     def get_user_count(self, obj):
         return obj.user_roles.values('user').distinct().count()
+
+    def validate_max_discount_percent(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError('Use a percent from 0 to 100, or leave it empty for no limit.')
+        return value
 
     def validate_name(self, value):
         value = value.strip()

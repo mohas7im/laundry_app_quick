@@ -9,6 +9,7 @@ The common master types the app uses, and their starting values.
 
 A migration writes these rows; to add a type, add it here and in a new migration.
 """
+import re
 
 ITEM_CATEGORY = 'ITEM_CATEGORY'
 PRICING_TYPE = 'PRICING_TYPE'
@@ -17,6 +18,35 @@ DISCOUNT_TYPE = 'DISCOUNT_TYPE'
 PAYMENT_METHOD = 'PAYMENT_METHOD'
 ORDER_NOTE = 'ORDER_NOTE'
 PRODUCTION_STAGE = 'PRODUCTION_STAGE'
+
+# per-piece item notes (the counter tags each piece)
+ITEM_COLOUR = 'ITEM_COLOUR'
+ITEM_DAMAGE = 'ITEM_DAMAGE'
+ITEM_STAIN = 'ITEM_STAIN'
+
+# customer preferences: one list per question; a customer picks one value of each
+PREF_SHIRT = 'PREF_SHIRT'
+PREF_TROUSER = 'PREF_TROUSER'
+PREF_STARCH = 'PREF_STARCH'
+PREF_DETERGENT = 'PREF_DETERGENT'
+PREF_SCENT = 'PREF_SCENT'
+PREF_SOFTENER = 'PREF_SOFTENER'
+PREFERENCE_TYPES = (PREF_SHIRT, PREF_TROUSER, PREF_STARCH, PREF_DETERGENT, PREF_SCENT, PREF_SOFTENER)
+
+COLOURS = ['Beige', 'Black', 'Brown', 'Blue', 'Blue (Light)', 'Blue (Royal)', 'Burgundy', 'Check', 'Cream', 'Dark',
+           'Dot', 'Floral', 'Gold', 'Gray', 'Gray (Light)', 'Green', 'Green (Light)', 'Hawaiian', 'Ivory', 'Khaki',
+           'Lemon', 'Light', 'Mixed', 'Multi', 'Navy', 'Off White', 'Orange', 'Peach', 'Plaid', 'Plain', 'Plum',
+           'Pink', 'Print', 'Purple', 'Red', 'Silver', 'Striped', 'Tan', 'Teal', 'White', 'Yellow']
+DAMAGE = ['Bubble', 'Button broken', 'Button missing', 'Collar torn', 'Colour loss', 'Cuff torn', 'Hole', 'Torn',
+          'Zip broken', 'Faded', 'Shrunk', 'Burn mark']
+
+
+def _code(name):
+    """"Blue (Light)" → "blue_light" (same rule as masters.serializers.code_from)."""
+    return re.sub(r'_+', '_', re.sub(r'[^a-z0-9]+', '_', name.lower())).strip('_')
+
+
+STAINS = ['Oil', 'Ink', 'Food', 'Tea / coffee', 'Blood', 'Sweat', 'Make-up', 'Mud', 'Rust', 'Unknown']
 
 MASTER_TYPES = {
     ITEM_CATEGORY: {
@@ -57,6 +87,26 @@ MASTER_TYPES = {
         'values': [('no_starch', 'No starch'), ('light_starch', 'Light starch'), ('heavy_starch', 'Heavy starch'),
                    ('on_hanger', 'On hanger'), ('folded', 'Folded')],
     },
+    ITEM_COLOUR: {'name': 'Item colour', 'fixed': False, 'description': 'Colours the counter tags a piece with.',
+                  'values': [(_code(n), n) for n in COLOURS]},
+    ITEM_DAMAGE: {'name': 'Item damage', 'fixed': False,
+                  'description': 'Damage noted on a piece when it is handed in.',
+                  'values': [(_code(n), n) for n in DAMAGE]},
+    ITEM_STAIN: {'name': 'Item stain', 'fixed': False, 'description': 'Stains noted on a piece.',
+                 'values': [(_code(n), n) for n in STAINS]},
+    PREF_SHIRT: {'name': 'Shirt', 'fixed': False, 'description': 'Customer preference: how shirts come back.',
+                 'values': [('hanger', 'Hanger'), ('boxed', 'Boxed'), ('folded', 'Folded')]},
+    PREF_TROUSER: {'name': 'Trouser', 'fixed': False, 'description': 'Customer preference: how trousers come back.',
+                   'values': [('hanger', 'Hanger'), ('boxed', 'Boxed'), ('folded', 'Folded')]},
+    PREF_STARCH: {'name': 'Starch', 'fixed': False, 'description': 'Customer preference: starch (nesha).',
+                  'values': [('none', 'No starch'), ('light', 'Light'), ('normal', 'Normal'), ('heavy', 'Heavy')]},
+    PREF_DETERGENT: {'name': 'Detergent', 'fixed': False, 'description': 'Customer preference: detergent type.',
+                     'values': [('standard', 'Standard'), ('premium', 'Premium')]},
+    PREF_SCENT: {'name': 'Scent', 'fixed': False, 'description': 'Customer preference: detergent scent.',
+                 'values': [('none', 'No scent'), ('light', 'Light'), ('medium', 'Medium'), ('heavy', 'Heavy'),
+                            ('sensitive', 'Sensitive skin')]},
+    PREF_SOFTENER: {'name': 'Softener', 'fixed': False, 'description': 'Customer preference: fabric softener.',
+                    'values': [('none', 'No softener'), ('standard', 'Standard'), ('premium', 'Premium')]},
 }
 
 # Production stage codes can't be these: the board uses them for its first and last columns.

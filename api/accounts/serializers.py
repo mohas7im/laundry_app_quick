@@ -8,6 +8,7 @@ from branches.models import Branch, UserBranchAssignment
 from roles.models import OWNER_ROLE, Role, UserRole
 from .access import get_access
 from .models import User
+from .pins import PIN_RE, hash_pin, user_with_pin
 
 
 # ── Current user (/auth/me, login response) ────────────────────────────────
@@ -131,13 +132,29 @@ class StaffUserSerializer(serializers.ModelSerializer):
     """
     roles = UserRoleSerializer(many=True, source='user_roles')
     password = serializers.CharField(write_only=True, required=False, trim_whitespace=False)
+    # approval PIN: 4–6 digits sets it, null removes it, "" or absent leaves it as it is
+    pin = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    has_pin = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'password', 'is_owner', 'roles',
-                  'date_joined', 'last_login']
-        read_only_fields = ['id', 'is_owner', 'date_joined', 'last_login']
+        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'password', 'pin', 'has_pin', 'is_owner',
+                  'roles', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'has_pin', 'is_owner', 'date_joined', 'last_login']
+
+    def get_has_pin(self, user):
+        return bool(user.pin_hash)
+
+    def validate_pin(self, value):
+        if value is None or value == '':
+            return value
+        value = value.strip()
+        if not PIN_RE.match(value):
+            raise serializers.ValidationError('Use 4 to 6 digits.')
+        if user_with_pin(value, exclude=self.instance):
+            raise serializers.ValidationError('Someone else has this PIN. Choose another.')
+        return value
 
     def get_is_owner(self, user):
         return any(ur.branch_id is None and ur.role.is_owner_role for ur in user.user_roles.all())
@@ -193,7 +210,11 @@ class StaffUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         roles = validated_data.pop('user_roles')
         password = validated_data.pop('password')
+        pin = validated_data.pop('pin', None)
         user = User.objects.create_user(password=password, **validated_data)
+        if pin:
+            user.pin_hash = hash_pin(user.id, pin)
+            user.save(update_fields=['pin_hash'])
         self._save_roles(user, roles)
         return user
 
@@ -201,6 +222,12 @@ class StaffUserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         roles = validated_data.pop('user_roles', None)
         password = validated_data.pop('password', None)
+        if 'pin' in validated_data:
+            pin = validated_data.pop('pin')
+            if pin is None:
+                instance.pin_hash = ''
+            elif pin:
+                instance.pin_hash = hash_pin(instance.id, pin)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
