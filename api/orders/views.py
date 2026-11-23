@@ -1,7 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
+from django.conf import settings
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, serializers, status, viewsets
@@ -21,6 +22,8 @@ from .workflow import OPEN, CollectSerializer, MoveSerializer, active_stages
 from .serializers import (
     OrderCancelSerializer,
     OrderCreateSerializer,
+    OrderSearchSerializer,
+    deadstock_cutoff,
     OrderUpdateSerializer,
     OrderListSerializer,
     OrderSerializer,
@@ -42,18 +45,17 @@ class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMod
 
     def get_queryset(self):
         lines = Prefetch('lines', queryset=OrderLine.objects.prefetch_related('upcharges'))
-        history = Prefetch('history', queryset=OrderStatusHistory.objects.select_related('changed_by'))
+        history = Prefetch('history', queryset=OrderStatusHistory.objects.select_related('changed_by'))  # staff
         payments = Prefetch('payments', queryset=Payment.objects.select_related('received_by'))
         qs = (Order.objects.filter(branch_id=get_active_branch_id(self.request))
               .select_related('customer', 'branch', 'price_list', 'created_by', 'stage', 'discount_approved_by')
               .prefetch_related(lines, history, payments))
-        status_filter = self.request.query_params.get('status')  # ?status=ready or ?status=received,ready
-        if status_filter:
-            qs = qs.filter(status__in=status_filter.split(','))
+        if getattr(self, 'action', None) == 'list':  # also built by hand for one order (_order_detail)
+            qs = search_orders(qs, self.request.query_params)
         return qs
 
     def get_serializer_class(self):
-        return OrderListSerializer if self.action == 'list' else OrderSerializer
+        return OrderSearchSerializer if self.action == 'list' else OrderSerializer
 
     def create(self, request, *args, **kwargs):
         serializer = OrderCreateSerializer(data=request.data, context=self._input_context())
@@ -73,6 +75,60 @@ class OrderViewSet(ResultViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMod
 
     def _input_context(self):
         return {'user': self.request.user, 'branch_id': get_active_branch_id(self.request)}
+
+
+def _date(params, name):
+    from datetime import date
+
+    raw = params.get(name, '').strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise serializers.ValidationError({name: 'Use a date like 2026-11-22.'})
+
+
+def search_orders(qs, params):
+    """
+    The order search (GET /api/orders/?…). Dates are shop days, from/to included:
+      status=ready,collected   express=true|false   payment=paid|unpaid   deadstock=true
+      placed_from / placed_to (taken)   ready_from / ready_to (cleaned)
+      collected_from / collected_to     paid_from / paid_to (a payment on those days)
+      payment_method=cash (paid with it, or set to it, e.g. on_account)
+    """
+    status_filter = params.get('status')  # ?status=ready or ?status=received,ready
+    if status_filter:
+        qs = qs.filter(status__in=status_filter.split(','))
+    express = params.get('express')
+    if express in ('true', 'false'):
+        qs = qs.filter(is_express=express == 'true')
+    payment = params.get('payment')
+    if payment == 'paid':
+        qs = qs.filter(paid_amount__gte=F('total'))
+    elif payment == 'unpaid':
+        qs = qs.filter(paid_amount__lt=F('total'))
+    if params.get('deadstock') == 'true':
+        qs = qs.filter(status=Order.Status.READY, ready_at__lte=deadstock_cutoff())
+    for field, name in (('created_at', 'placed'), ('ready_at', 'ready'), ('collected_at', 'collected')):
+        start, end = _date(params, f'{name}_from'), _date(params, f'{name}_to')
+        if start:
+            qs = qs.filter(**{f'{field}__date__gte': start})
+        if end:
+            qs = qs.filter(**{f'{field}__date__lte': end})
+    paid_from, paid_to = _date(params, 'paid_from'), _date(params, 'paid_to')
+    if paid_from or paid_to:
+        payments = Payment.objects.filter(kind=Payment.Kind.PAYMENT)
+        if paid_from:
+            payments = payments.filter(created_at__date__gte=paid_from)
+        if paid_to:
+            payments = payments.filter(created_at__date__lte=paid_to)
+        qs = qs.filter(pk__in=payments.values('order_id'))
+    method = params.get('payment_method', '').strip()
+    if method:
+        paid_with = Payment.objects.filter(kind=Payment.Kind.PAYMENT, method=method).values('order_id')
+        qs = qs.filter(Q(pk__in=paid_with) | Q(payment_method=method))
+    return qs
 
 
 class PosCatalogueView(APIView):
@@ -151,9 +207,10 @@ class PosCatalogueView(APIView):
 # ── M5: production board and collection ───────────────────────────────────
 
 def _open_orders(request, *statuses):
-    lines = Prefetch('lines', queryset=OrderLine.objects.only('id', 'order_id', 'quantity', 'pricing_type'))
+    lines = Prefetch('lines', queryset=OrderLine.objects.only(
+        'id', 'order_id', 'quantity', 'pricing_type', 'item_name', 'service_id', 'service_name', 'position'))
     return (Order.objects.filter(branch_id=get_active_branch_id(request), status__in=statuses)
-            .select_related('customer', 'stage').prefetch_related(lines))
+            .select_related('customer', 'stage', 'created_by').prefetch_related(lines))
 
 
 class ProductionBoardView(APIView):
@@ -169,6 +226,9 @@ class ProductionBoardView(APIView):
         orders = _open_orders(request, *OPEN).order_by('ready_by')
         data = {
             'stages': [{'code': s.code, 'name': s.name} for s in active_stages()],
+            # the board's Section filter
+            'services': [{'id': str(s.id), 'name': s.name} for s in Service.objects.filter(is_active=True)],
+            'deadstock_days': settings.ORDERS['DEADSTOCK_DAYS'],
             'orders': OrderListSerializer(orders, many=True).data,
         }
         return BaseResult.ok(data, 'Production board retrieved successfully.').to_response()
@@ -323,7 +383,7 @@ class CustomerBalanceView(APIView):
 
     def get(self, request, customer_id):
         customer = self._customer(customer_id)
-        orders = outstanding_orders(customer).select_related('customer', 'stage', 'branch')
+        orders = outstanding_orders(customer).select_related('customer', 'stage', 'branch', 'created_by')
         due = sum((o.balance for o in orders), Decimal('0'))
         data = {'customer': str(customer.id), 'customer_name': customer.name, 'balance': str(due),
                 'orders': [{**OrderListSerializer(o).data, 'branch_code': o.branch.code} for o in orders]}

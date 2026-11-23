@@ -86,12 +86,15 @@ class MoveSerializer(serializers.Serializer):
             if target is None:
                 continue  # already ready
             if target == READY:
+                if order.status != Order.Status.READY:
+                    order.ready_at = timezone.now()
                 order.status, order.stage, order.rack = Order.Status.READY, None, data['rack'].strip()
             elif target == RECEIVED:
-                order.status, order.stage, order.rack = Order.Status.RECEIVED, None, ''
+                order.status, order.stage, order.rack, order.ready_at = Order.Status.RECEIVED, None, '', None
             else:
                 order.status, order.stage, order.rack = Order.Status.RECEIVED, data['by_code'][target], ''
-            order.save(update_fields=['status', 'stage', 'rack', 'updated_at'])
+                order.ready_at = None
+            order.save(update_fields=['status', 'stage', 'rack', 'ready_at', 'updated_at'])
             _log(order, user, note=f'Rack {order.rack}' if order.rack else '')
             moved.append(order)
         return moved

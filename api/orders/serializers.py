@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -422,6 +422,11 @@ class OrderLineSerializer(serializers.ModelSerializer):
                 for u in line.upcharges.all()]
 
 
+def deadstock_cutoff():
+    """Ready before this time and still not collected: deadstock."""
+    return timezone.now() - timedelta(days=settings.ORDERS['DEADSTOCK_DAYS'])
+
+
 class OrderListSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.name', read_only=True)
     stage = serializers.SlugRelatedField(slug_field='code', read_only=True)
@@ -429,18 +434,59 @@ class OrderListSerializer(serializers.ModelSerializer):
     customer_phone = serializers.CharField(source='customer.phone', read_only=True)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     pieces = serializers.SerializerMethodField()
+    summary = serializers.SerializerMethodField()
+    deadstock = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
 
     class Meta:
         model = Order
         fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'status', 'stage', 'stage_name',
-                  'rack', 'is_express', 'ready_by', 'pieces', 'total', 'paid_amount', 'balance', 'collected_at',
-                  'created_at']
+                  'rack', 'is_express', 'ready_by', 'pieces', 'summary', 'notes', 'preferences', 'total',
+                  'paid_amount', 'balance', 'ready_at', 'deadstock', 'collected_at', 'created_by_name', 'created_at']
+
+    def get_summary(self, order):
+        """What is in the order, one entry per line: "Kandura × 2 (Wash & Iron)"."""
+        return [{'service': str(l.service_id), 'service_name': l.service_name, 'item_name': l.item_name,
+                 'quantity': quantity_text(l.quantity), 'pricing_type': l.pricing_type}
+                for l in order.lines.all()]
+
+    def get_deadstock(self, order):
+        if order.status != Order.Status.READY or order.ready_at is None:
+            return False
+        if 'cutoff' not in self.context:
+            self.context['cutoff'] = deadstock_cutoff()
+        return order.ready_at <= self.context['cutoff']
 
     def get_pieces(self, order):
         """Pieces handed in: unit items counted, kg/m² lines count as one bag; bag drop adds its count."""
         lines = order.lines.all()
         counted = sum(int(l.quantity) if l.pricing_type == 'unit' else 1 for l in lines)
         return counted + order.bag_drop_pieces
+
+
+class OrderSearchSerializer(OrderListSerializer):
+    """A row of the order search: who took, cleaned and collected the order, and when."""
+
+    staff = serializers.SerializerMethodField()
+
+    class Meta(OrderListSerializer.Meta):
+        fields = OrderListSerializer.Meta.fields + ['staff']
+
+    def get_staff(self, order):
+        history = list(order.history.all())  # oldest first
+        if not history:
+            return []
+
+        def last(status):
+            return next((h for h in reversed(history) if h.status == status and not h.note.startswith('Edited:')),
+                        None)
+
+        steps = [('Taken', history[0])]
+        if order.ready_at:
+            steps.append(('Cleaned', last(Order.Status.READY)))
+        if order.status in (Order.Status.COLLECTED, Order.Status.CANCELLED):
+            steps.append((order.get_status_display(), last(order.status)))
+        return [{'step': step, 'name': h.changed_by.full_name, 'at': h.changed_at} for step, h in steps if h]
 
 
 class OrderSerializer(OrderListSerializer):

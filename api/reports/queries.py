@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, F, Max, Min, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
 from cashier.models import Shift
@@ -88,12 +88,6 @@ def collected(branch_id, start, end):
     }
 
 
-def _ready_at():
-    """When each order last became ready (from its history)."""
-    return Subquery(OrderStatusHistory.objects.filter(order=OuterRef('pk'), status=Order.Status.READY)
-                    .order_by('-changed_at').values('changed_at')[:1])
-
-
 def operations(branch_id, now):
     """The workshop right now: work by stage, overdue, ready to collect and how long it has waited."""
     open_orders = Order.objects.filter(branch_id=branch_id, status__in=[Order.Status.RECEIVED, Order.Status.READY])
@@ -102,7 +96,7 @@ def operations(branch_id, now):
     by_stage = dict(received.values_list('stage__code').annotate(n=Count('id')))
     wip = [{'code': 'received', 'name': 'Received', 'orders': by_stage.get(None, 0)}]
     wip += [{'code': s.code, 'name': s.name, 'orders': by_stage.get(s.code, 0)} for s in stages]
-    ready = open_orders.filter(status=Order.Status.READY).annotate(ready_at=_ready_at())
+    ready = open_orders.filter(status=Order.Status.READY)  # orders.ready_at: when it became ready
     wip.append({'code': 'ready', 'name': 'Ready', 'orders': ready.count()})
 
     overdue = received.filter(ready_by__lt=now)

@@ -240,4 +240,5 @@ ORDERS = {
     'READY_DAYS': 2,            # normal orders: ready in 2 days (plus each item's extra days)
     'EXPRESS_READY_DAYS': 0,    # express: same day
     'READY_TIME': '18:00',      # ready-by time of day
+    'DEADSTOCK_DAYS': 45,       # ready but not collected this long: deadstock (receipt terms: 45 days)
 }

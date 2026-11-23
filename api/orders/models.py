@@ -50,6 +50,8 @@ class Order(models.Model):
                               related_name='+', limit_choices_to={'type__code': 'PRODUCTION_STAGE'},
                               help_text='Where a received order is in the workshop; empty = not started.')
     rack = models.CharField(max_length=30, blank=True, help_text='Where a ready order is kept, e.g. B-12.')
+    ready_at = models.DateTimeField(null=True, blank=True,
+                                    help_text='When it was cleaned (moved to Ready); deadstock counts from here.')
     collected_at = models.DateTimeField(null=True, blank=True)
     is_express = models.BooleanField(default=False)
     ready_by = models.DateTimeField()
