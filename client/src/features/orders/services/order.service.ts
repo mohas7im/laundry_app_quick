@@ -7,6 +7,8 @@ import type {
   Order,
   OrderListRow,
   OrderRequest,
+  OrderSearch,
+  OrderSearchRow,
   OrderUpdateRequest,
   PosCatalogue,
   ProductionBoard,
@@ -14,7 +16,11 @@ import type {
 
 export const getPosCatalogue = () => http.get<PosCatalogue>(ENDPOINTS.pos.catalogue)
 
-export const getOrders = () => http.get<OrderListRow[]>(ENDPOINTS.orders.list)
+/** The order search: empty filters are left out. */
+export const getOrders = (search: OrderSearch = {}) =>
+  http.get<OrderSearchRow[]>(ENDPOINTS.orders.list, {
+    params: Object.fromEntries(Object.entries(search).filter(([, v]) => v !== undefined && v !== "")),
+  })
 
 export const getOrder = (id: string) => http.get<Order>(ENDPOINTS.orders.byId(id))
 

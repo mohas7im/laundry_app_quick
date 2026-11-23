@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react"
-import { Link, useParams } from "react-router"
+import { useCallback, useEffect, useState } from "react"
+import { Link, useParams, useSearchParams } from "react-router"
 import {
   ArrowLeftIcon,
   BanknoteIcon,
@@ -59,6 +59,17 @@ export function OrderPage() {
   const [paying, setPaying] = useState(false)
   const [refunding, setRefunding] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+
+  // /orders/:id?print=1 (the print buttons on the board and the order list): print the
+  // receipt as soon as it and the company details are on the page, once
+  const [params, setParams] = useSearchParams()
+  const autoPrint = params.get("print") === "1" && !!order.data && !company.loading
+  useEffect(() => {
+    if (!autoPrint) return
+    setParams({}, { replace: true })
+    const timer = setTimeout(() => window.print(), 300) // let the logo render first
+    return () => clearTimeout(timer)
+  }, [autoPrint, setParams])
 
   if (order.loading) {
     return (

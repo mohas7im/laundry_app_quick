@@ -165,6 +165,7 @@ export function CollectionPage() {
                               {o.number}
                             </Link>
                             {o.rack && <Badge variant="outline">Rack {o.rack}</Badge>}
+                            {o.deadstock && <Badge variant="destructive">Deadstock</Badge>}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {o.pieces} {o.pieces === 1 ? "piece" : "pieces"} · ready {readyFormat.format(new Date(o.ready_by))}

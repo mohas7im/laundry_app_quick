@@ -116,11 +116,52 @@ export interface OrderListRow {
   is_express: boolean
   ready_by: string
   pieces: number
+  /** What is in the order, one entry per line. */
+  summary: OrderSummaryLine[]
+  notes: string
+  /** The customer's preferences when the order was taken. */
+  preferences: string
   total: string
   paid_amount: string
   balance: string
+  /** When it was cleaned (moved to Ready). */
+  ready_at: string | null
+  /** Ready and not collected for DEADSTOCK_DAYS (45) or more. */
+  deadstock: boolean
   collected_at: string | null
+  created_by_name: string
   created_at: string
+}
+
+export interface OrderSummaryLine {
+  service: string
+  service_name: string
+  item_name: string
+  quantity: string
+  pricing_type: PricingType
+}
+
+/** A row of the order search: who took, cleaned and collected the order, and when. */
+export interface OrderSearchRow extends OrderListRow {
+  staff: { step: string; name: string; at: string }[]
+}
+
+/** GET /api/orders/ filters; dates are shop days "2026-11-22", from/to included. */
+export interface OrderSearch {
+  search_term?: string
+  status?: string
+  express?: "true" | "false"
+  payment?: "paid" | "unpaid"
+  payment_method?: string
+  deadstock?: "true"
+  placed_from?: string
+  placed_to?: string
+  ready_from?: string
+  ready_to?: string
+  collected_from?: string
+  collected_to?: string
+  paid_from?: string
+  paid_to?: string
 }
 
 /** Money taken for an order, or given back (kind "refund"). */
@@ -147,6 +188,9 @@ export interface OrderHistoryEntry {
 /** GET /api/production/ — stage columns between Received and Ready, and the open orders. */
 export interface ProductionBoard {
   stages: { code: string; name: string }[]
+  /** For the Section filter. */
+  services: { id: string; name: string }[]
+  deadstock_days: number
   orders: OrderListRow[]
 }
 
