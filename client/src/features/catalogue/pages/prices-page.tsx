@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { Link, useBlocker, useLocation } from "react-router"
-import { CircleAlertIcon, CircleDollarSignIcon, InfoIcon, SearchIcon } from "lucide-react"
+import { CircleAlertIcon, CircleDollarSignIcon, FileUpIcon, HistoryIcon, InfoIcon, SearchIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -17,6 +17,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { useRecords } from "@/lib/use-records"
+import { ImportPricesDialog } from "../components/import-prices-dialog"
+import { PriceHistoryDialog } from "../components/price-history-dialog"
 import { getPriceGrid, getPriceLists, savePrices } from "../services/catalogue.service"
 import type { PriceCell, PriceGrid, PriceList } from "../types"
 
@@ -83,12 +85,37 @@ export function PricesPage() {
     () => (location.state as { priceListId?: string } | null)?.priceListId ?? null,
   )
 
+  const { can } = useAuth()
+  const [importing, setImporting] = useState(false)
+  // after an import the grid loads again
+  const [version, setVersion] = useState(0)
+
   const lists = priceLists.data
   const selected = lists.find((l) => l.id === chosenId) ?? lists.find((l) => l.is_default) ?? lists[0]
 
   return (
     <>
-      <PageHeader title="Prices" description="What each item costs for each service. Prices include VAT." />
+      <PageHeader
+        title="Prices"
+        description="What each item costs for each service. Prices include VAT."
+        actions={
+          can("prices.edit") && (
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              <FileUpIcon data-icon="inline-start" />
+              Import CSV
+            </Button>
+          )
+        }
+      />
+      <ImportPricesDialog
+        open={importing}
+        onOpenChange={setImporting}
+        lists={lists}
+        onImported={() => {
+          void priceLists.reload()
+          setVersion((v) => v + 1)
+        }}
+      />
 
       {priceLists.loading ? (
         <LoadingState />
@@ -110,7 +137,7 @@ export function PricesPage() {
           </EmptyContent>
         </Empty>
       ) : (
-        <PriceGridEditor key={selected.id} priceList={selected} lists={lists} onSelectList={setChosenId} />
+        <PriceGridEditor key={`${selected.id}:${version}`} priceList={selected} lists={lists} onSelectList={setChosenId} />
       )}
     </>
   )
@@ -128,6 +155,7 @@ function PriceGridEditor({
   const { can } = useAuth()
   const readOnly = !can("prices.edit")
 
+  const [historyOpen, setHistoryOpen] = useState(false)
   const fetchGrid = useCallback(() => getPriceGrid(priceList.id), [priceList.id])
   const grid = useRecords(fetchGrid, null as PriceGrid | null)
 
@@ -216,6 +244,11 @@ function PriceGridEditor({
           />
           {dirty && <FieldDescription>Save or discard your changes to switch lists.</FieldDescription>}
         </Field>
+        <Button variant="ghost" className="sm:mr-auto" onClick={() => setHistoryOpen(true)}>
+          <HistoryIcon data-icon="inline-start" />
+          Price history
+        </Button>
+        <PriceHistoryDialog priceList={priceList} open={historyOpen} onOpenChange={setHistoryOpen} />
         {!readOnly && (
           <div className="flex items-center gap-2">
             {dirty && (

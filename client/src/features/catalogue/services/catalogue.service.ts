@@ -4,9 +4,12 @@
 import { ENDPOINTS } from "@/lib/api/endpoints"
 import { http } from "@/lib/api/http"
 import type {
+  ImportRequest,
+  ImportResult,
   Item,
   ItemRequest,
   PriceCell,
+  PriceChange,
   PriceGrid,
   PriceList,
   PriceListRequest,
@@ -43,6 +46,13 @@ export const getPriceGrid = (priceListId: string) => http.get<PriceGrid>(ENDPOIN
 /** Saves the changed cells; returns the whole grid again. */
 export const savePrices = (priceListId: string, prices: PriceCell[]) =>
   http.put<PriceGrid>(ENDPOINTS.prices.grid(priceListId), { prices })
+
+/** The latest price changes of a list (newest first); item / service narrow it to one cell. */
+export const getPriceHistory = (priceListId: string, filter: { item?: string; service?: string } = {}) =>
+  http.get<PriceChange[]>(ENDPOINTS.prices.history(priceListId), { params: filter })
+
+/** Preview (commit false) or import (commit true) a price list CSV. */
+export const importPriceList = (payload: ImportRequest) => http.post<ImportResult>(ENDPOINTS.catalogueImport, payload)
 
 // Upcharges
 export const getUpcharges = () => http.get<Upcharge[]>(ENDPOINTS.upcharges.list)

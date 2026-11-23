@@ -52,10 +52,11 @@ function ItemForm({ item, onSaved, onDone }: { item?: Item | null; onSaved: () =
           name: item.name,
           category: item.category,
           pricing_type: item.pricing_type,
+          pieces: item.pieces,
           sort_order: item.sort_order,
           is_active: item.is_active,
         }
-      : { name: "", category: "other", pricing_type: "unit", sort_order: 0, is_active: true },
+      : { name: "", category: "other", pricing_type: "unit", pieces: 1, sort_order: 0, is_active: true },
   )
   // dropdowns from Common Masters (keep the item's current value even if it was hidden since)
   const categories = useMasters(MASTER.ITEM_CATEGORY, item?.category)
@@ -133,6 +134,23 @@ function ItemForm({ item, onSaved, onDone }: { item?: Item | null; onSaved: () =
           )}
         </FormField>
       </div>
+
+      {values.pricing_type === "unit" && (
+        <FormField label="Pieces per item" error={errors.pieces}
+          hint="How many tags one of these gets, e.g. a 2-piece suit = 2. Counted on orders and the board.">
+          {(f) => (
+            <Input
+              {...f}
+              type="number"
+              min={1}
+              max={20}
+              className="w-28"
+              value={values.pieces}
+              onChange={(e) => set("pieces", Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+            />
+          )}
+        </FormField>
+      )}
 
       <div className="flex items-center gap-3">
         <Switch id="item-active" checked={values.is_active} onCheckedChange={(v) => set("is_active", v)} />

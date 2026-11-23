@@ -41,8 +41,8 @@ export function ServiceFormDialog({ open, onOpenChange, service, onSaved }: Prop
 function ServiceForm({ service, onSaved, onDone }: { service?: Service | null; onSaved: () => void; onDone: () => void }) {
   const [values, setValues] = useState<ServiceRequest>(() =>
     service
-      ? { name: service.name, sort_order: service.sort_order, is_active: service.is_active }
-      : { name: "", sort_order: 0, is_active: true },
+      ? { name: service.name, ready_days: service.ready_days, sort_order: service.sort_order, is_active: service.is_active }
+      : { name: "", ready_days: null, sort_order: 0, is_active: true },
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -93,6 +93,22 @@ function ServiceForm({ service, onSaved, onDone }: { service?: Service | null; o
           )}
         </FormField>
       </div>
+
+      <FormField label="Ready in (days)" error={errors.ready_days}
+        hint="For normal orders, e.g. Wash 1, Dry clean 2. Leave empty to use the shop's default (2 days).">
+        {(f) => (
+          <Input
+            {...f}
+            type="number"
+            min={0}
+            max={60}
+            className="w-28"
+            placeholder="Default"
+            value={values.ready_days ?? ""}
+            onChange={(e) => set("ready_days", e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0))}
+          />
+        )}
+      </FormField>
 
       <div className="flex items-center gap-3">
         <Switch id="service-active" checked={values.is_active} onCheckedChange={(v) => set("is_active", v)} />

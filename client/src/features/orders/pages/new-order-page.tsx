@@ -314,13 +314,22 @@ function PosScreen({
   const paidCents = toCents(paidAmount)
 
   const extraDays = Math.max(0, ...lines.map((l) => priceOf(l.item, l.service)?.extra_days ?? 0))
+  // the slowest service of the order sets the days (a service without its own: the shop's default)
+  const settings = catalogue.settings
+  const readyDays = lines.length
+    ? Math.max(...lines.map((l) => services.get(l.service)?.ready_days ?? settings.ready_days))
+    : settings.ready_days
   // shop time, e.g. "2026-11-24T18:00"
   const suggestion = suggestedReadyBy(openedAt, {
     express,
     extraDays,
-    readyDays: catalogue.settings.ready_days,
-    expressReadyDays: catalogue.settings.express_ready_days,
-    readyTime: catalogue.settings.ready_time,
+    readyDays,
+    expressReadyDays: settings.express_ready_days,
+    readyTime: settings.ready_time,
+    cutoff: settings.cutoff_time,
+    closesAt: settings.closes_at,
+    closedWeekdays: settings.closed_weekdays,
+    holidays: settings.holidays,
   })
 
   // a discount over the user's limit needs a manager (not the customer's own %, nor an unchanged one)
@@ -342,13 +351,16 @@ function PosScreen({
       .sort((a, b) => (usage.get(tileKey(b.id, serviceId)) ?? 0) - (usage.get(tileKey(a.id, serviceId)) ?? 0))
   }, [catalogue, priceOf, serviceId, search, usage])
 
-  const pieceCount = (line: CartLine) =>
-    items.get(line.item)?.pricing_type === "unit" ? Math.max(0, Math.floor(Number(line.quantity) || 0)) : 1
+  // one tag per physical piece: a 2-piece suit × 3 = 6
+  const pieceCount = (line: CartLine) => {
+    const item = items.get(line.item)
+    return item?.pricing_type === "unit" ? Math.max(0, Math.floor(Number(line.quantity) || 0)) * (item.pieces || 1) : 1
+  }
 
   const countInCart = (item: string) =>
     lines
       .filter((l) => l.item === item && l.service === serviceId)
-      .reduce((n, l) => n + (items.get(l.item)?.pricing_type === "unit" ? Number(l.quantity) || 0 : 1), 0)
+      .reduce((n, l) => n + (items.get(l.item)?.pricing_type === "unit" ? Number(l.quantity) || 0 : 1), 0) // tile badge: items
 
   function addItem(itemId: string) {
     setLines((prev) => {

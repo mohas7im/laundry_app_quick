@@ -24,10 +24,13 @@ export interface PosCatalogue {
   /** The default price list. */
   price_list: { id: string; name: string }
   price_lists: { id: string; name: string }[]
-  services: { id: string; name: string }[]
+  /** ready_days: null = the shop's default. */
+  services: { id: string; name: string; ready_days: number | null }[]
   items: {
     id: string
     name: string
+    /** Pieces (tags) per item, e.g. a 2-piece suit = 2. */
+    pieces: number
     category: ItemCategory
     category_name: string
     pricing_type: PricingType
@@ -55,7 +58,17 @@ export interface PosCatalogue {
   preferences: PreferenceList[]
   /** The biggest discount % this user may give without a manager; null = no limit. */
   discount_limit: string | null
-  settings: { vat_rate: string; ready_days: number; express_ready_days: number; ready_time: string }
+  settings: {
+    vat_rate: string
+    ready_days: number
+    express_ready_days: number
+    ready_time: string
+    /** The branch's calendar: "20:00" or null; 0 = Monday; "2026-12-02". */
+    cutoff_time: string | null
+    closes_at: string | null
+    closed_weekdays: number[]
+    holidays: string[]
+  }
 }
 
 export type PieceTag = "colours" | "damage" | "stains"
@@ -139,6 +152,7 @@ export interface OrderSummaryLine {
   item_name: string
   quantity: string
   pricing_type: PricingType
+  pieces_per_item: number
 }
 
 /** A row of the order search: who took, cleaned and collected the order, and when. */

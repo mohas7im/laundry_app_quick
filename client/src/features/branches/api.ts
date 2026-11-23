@@ -9,13 +9,34 @@ export interface Branch {
   phone: string
   email: string
   address: string
+  /** "08:00:00" or null */
+  opens_at: string | null
+  closes_at: string | null
+  /** Orders taken after this count from the next day. */
+  cutoff_time: string | null
+  /** 0 = Monday … 6 = Sunday */
+  closed_weekdays: number[]
+  holidays: { date: string; name: string }[]
   is_active: boolean
   user_count: number
   created_at: string
   updated_at: string
 }
 
-export type BranchInput = Pick<Branch, "name" | "code" | "phone" | "email" | "address" | "is_active">
+export type BranchInput = Pick<
+  Branch,
+  | "name"
+  | "code"
+  | "phone"
+  | "email"
+  | "address"
+  | "opens_at"
+  | "closes_at"
+  | "cutoff_time"
+  | "closed_weekdays"
+  | "holidays"
+  | "is_active"
+>
 
 export const branchesApi = baseApi.injectEndpoints({
   endpoints: (build) => ({

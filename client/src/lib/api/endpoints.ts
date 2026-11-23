@@ -62,7 +62,11 @@ export const ENDPOINTS = {
   services: crud("/api/services"),
   items: crud("/api/items"),
   priceLists: crud("/api/price-lists"),
-  prices: { grid: (priceListId: Id) => `/api/prices/${priceListId}/` },
+  prices: {
+    grid: (priceListId: Id) => `/api/prices/${priceListId}/`,
+    history: (priceListId: Id) => `/api/prices/${priceListId}/history/`,
+  },
+  catalogueImport: "/api/catalogue/import/",
   upcharges: crud("/api/upcharges"),
   // lookup lists (common masters)
   commonMasterTypes: crud("/api/common-master-types"),
