@@ -498,7 +498,7 @@ function PosScreen({
         <CardHeader className="gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Tabs value={serviceId} onValueChange={(v) => setServiceId(v as string)}>
-              <TabsList className="flex-wrap">
+              <TabsList className="h-auto flex-wrap justify-start">
                 {catalogue.services.map((s) => (
                   <TabsTrigger key={s.id} value={s.id}>
                     {s.name}

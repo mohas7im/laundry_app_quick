@@ -1,6 +1,5 @@
 // shadcn "login-02" block layout. The brand panel takes the place of the block's image.
 import type { CSSProperties } from "react"
-import { WashingMachineIcon } from "lucide-react"
 
 import { APP_NAME } from "@/config/navigation"
 import { LoginForm } from "../components/login-form"
@@ -71,10 +70,7 @@ export function LoginPage() {
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex justify-center gap-2 md:justify-start">
           <div className="flex items-center gap-2 font-medium">
-            <div className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <WashingMachineIcon className="size-4" />
-            </div>
-            {APP_NAME}
+            <img src="/comfort-logo.png" alt={APP_NAME} className="h-14 w-auto" />
           </div>
         </div>
         <div className="flex flex-1 items-center justify-center">

@@ -278,6 +278,7 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
 
       <div className="my-3 border-t border-dashed" />
       <div className="text-center">
+        <div className="text-sm font-bold tracking-widest uppercase">Tax Invoice</div>
         <div className="text-xs text-muted-foreground">Order</div>
         <div className="text-2xl font-bold tracking-wide tabular-nums">{o.number}</div>
         {o.is_express && <div className="text-xs font-semibold uppercase">Express</div>}
