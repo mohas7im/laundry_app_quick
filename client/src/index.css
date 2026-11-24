@@ -171,7 +171,7 @@
 @media print {
   @page {
     size: 80mm auto;
-    margin: 3mm;
+    margin: 0;
   }
   body * {
     visibility: hidden;
@@ -184,10 +184,12 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 74mm;
+    /* 80 mm roll, printer prints the middle 72 mm: keep 6 mm each side (68 mm of content, 2 mm safety) */
+    width: 80mm;
     max-width: none;
     border: 0;
-    padding: 0;
+    padding: 2mm 6mm;
+    box-sizing: border-box;
     color: #000;
   }
 }
