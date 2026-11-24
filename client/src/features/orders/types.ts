@@ -120,6 +120,7 @@ export interface OrderListRow {
   customer: string
   customer_name: string
   customer_phone: string
+  customer_address?: string
   status: OrderStatus
   /** PRODUCTION_STAGE code while in the workshop; null = not started (or ready). */
   stage: string | null

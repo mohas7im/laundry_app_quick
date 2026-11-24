@@ -190,6 +190,11 @@
     border: 0;
     padding: 2mm 6mm;
     box-sizing: border-box;
+  }
+  /* thermal: solid black, no grey */
+  .print-area * {
+    color: #000 !important;
+    border-color: #000 !important;
     color: #000;
   }
 }

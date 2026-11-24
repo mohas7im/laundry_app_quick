@@ -456,6 +456,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     stage = serializers.SlugRelatedField(slug_field='code', read_only=True)
     stage_name = serializers.CharField(source='stage.name', read_only=True, default='')
     customer_phone = serializers.CharField(source='customer.phone', read_only=True)
+    customer_address = serializers.CharField(source='customer.address', read_only=True)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     pieces = serializers.SerializerMethodField()
     summary = serializers.SerializerMethodField()
@@ -464,7 +465,7 @@ class OrderListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'status', 'stage', 'stage_name',
+        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'customer_address', 'status', 'stage', 'stage_name',
                   'rack', 'is_express', 'ready_by', 'pieces', 'summary', 'notes', 'preferences', 'total',
                   'paid_amount', 'balance', 'ready_at', 'deadstock', 'collected_at', 'created_by_name', 'created_at']
 

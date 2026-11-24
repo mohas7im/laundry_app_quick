@@ -286,6 +286,7 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
       <div className="my-3 border-t border-dashed" />
 
       <ReceiptRow label="Customer" value={o.customer_name} />
+      {o.customer_address && <div className="text-right text-xs whitespace-pre-line">{o.customer_address}</div>}
       <ReceiptRow label="Phone" value={o.customer_phone} />
       <ReceiptRow label="Taken" value={longDate.format(new Date(o.created_at))} />
       <ReceiptRow label="Ready by" value={longDate.format(new Date(o.ready_by))} strong />
@@ -293,20 +294,20 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
 
       <div className="my-3 border-t border-dashed" />
 
-      <div className="grid gap-2">
+      <div className="grid grid-cols-[1fr_1.6rem_2rem_3.2rem_3.6rem] gap-x-1 border-b border-dashed pb-1 text-[11px] font-semibold">
+        <span>Item</span><span className="text-center">Svc</span><span className="text-right">Qty</span>
+        <span className="text-right">Unit</span><span className="text-right">Price</span>
+      </div>
+      <div className="mt-1 grid gap-1.5">
         {o.lines.map((line) => (
           <div key={line.id} className="grid">
-            <div className="flex justify-between gap-2">
-              <span>
-                {line.quantity}
-                {UNIT_SUFFIX[line.pricing_type] || " ×"} {line.item_name}
-              </span>
-              <span className="tabular-nums">{formatMoney(line.line_total)}</span>
+            <div className="grid grid-cols-[1fr_1.6rem_2rem_3.2rem_3.6rem] gap-x-1 text-xs tabular-nums">
+              <span className="font-medium">{line.item_name}</span>
+              <span className="text-center">{line.service_name.charAt(0).toUpperCase()}</span>
+              <span className="text-right">{line.quantity}{UNIT_SUFFIX[line.pricing_type] ? UNIT_SUFFIX[line.pricing_type].trim() : ""}</span>
+              <span className="text-right">{Number(line.unit_price).toFixed(2)}</span>
+              <span className="text-right">{Number(line.line_total).toFixed(2)}</span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {line.service_name} · {formatMoney(line.unit_price)}
-              {UNIT_SUFFIX[line.pricing_type] ? ` /${UNIT_SUFFIX[line.pricing_type].trim()}` : " each"}
-            </span>
             {line.upcharges.map((u) => (
               <span key={u.name} className="flex justify-between text-xs text-muted-foreground">
                 <span>+ {u.name}</span>
@@ -333,15 +334,16 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
       <div className="my-3 border-t border-dashed" />
 
       <div className="grid gap-1 tabular-nums">
-        <ReceiptRow label="Subtotal" value={formatMoney(o.subtotal)} />
+        <ReceiptRow label="Sub total" value={formatMoney(o.subtotal)} />
         {Number(o.discount_amount) > 0 && (
           <ReceiptRow
             label={o.discount_type === "percent" ? `Discount ${Number(o.discount_value)}%` : "Discount"}
             value={`− ${formatMoney(o.discount_amount)}`}
           />
         )}
+        <ReceiptRow label="VAT 5% (included)" value={formatMoney(o.vat_amount)} />
         <ReceiptRow label="Total" value={formatMoney(o.total)} strong large />
-        <ReceiptRow label="VAT included" value={formatMoney(o.vat_amount)} muted />
+        <ReceiptRow label="Total pieces" value={String(o.pieces)} />
         {paid > 0 && <ReceiptRow label={paidWith ? `Paid (${paidWith})` : "Paid"} value={formatMoney(o.paid_amount)} />}
         <ReceiptRow
           label={balance > 0 ? "Balance due" : "Paid in full"}
@@ -365,7 +367,7 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
             )}
             {o.notes && (
               <div>
-                <span className="font-medium">Notes: </span>
+                <span className="font-semibold">Notes: </span>
                 {o.notes}
               </div>
             )}
