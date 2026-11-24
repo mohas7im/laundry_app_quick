@@ -223,9 +223,9 @@ export function OrdersPage() {
             ]}
           />
           {DATE_RANGES.map((range) => (
-            <div key={range.label} className="grid gap-1.5">
+            <div key={range.label} className="grid gap-1.5 sm:col-span-2">
               <Label>{range.label}</Label>
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
                 <Input
                   type="date"
                   aria-label={`${range.label} from`}
