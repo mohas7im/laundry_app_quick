@@ -161,12 +161,20 @@ export function OrdersPage() {
             >
               <PrinterIcon />
             </Button>
-            <RowActionButtons label={row.original.number} onView={() => navigate(`/orders/${row.original.id}`)} />
+            <RowActionButtons
+              label={row.original.number}
+              onView={() => navigate(`/orders/${row.original.id}`)}
+              onEdit={
+                can("orders.edit") && (row.original.status === "received" || row.original.status === "ready")
+                  ? () => navigate(`/orders/${row.original.id}/edit`)
+                  : undefined
+              }
+            />
           </div>
         ),
       },
     ],
-    [navigate],
+    [navigate, can],
   )
 
   return (

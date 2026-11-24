@@ -334,14 +334,17 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
       <div className="my-3 border-t border-dashed" />
 
       <div className="grid gap-1 tabular-nums">
-        <ReceiptRow label="Sub total" value={formatMoney(o.subtotal)} />
         {Number(o.discount_amount) > 0 && (
-          <ReceiptRow
-            label={o.discount_type === "percent" ? `Discount ${Number(o.discount_value)}%` : "Discount"}
-            value={`− ${formatMoney(o.discount_amount)}`}
-          />
+          <>
+            <ReceiptRow label="Items total" value={formatMoney(o.subtotal)} />
+            <ReceiptRow
+              label={o.discount_type === "percent" ? `Discount ${Number(o.discount_value)}%` : "Discount"}
+              value={`− ${formatMoney(o.discount_amount)}`}
+            />
+          </>
         )}
-        <ReceiptRow label="VAT 5% (included)" value={formatMoney(o.vat_amount)} />
+        <ReceiptRow label="Sub total (excl. VAT)" value={formatMoney((Number(o.total) - Number(o.vat_amount)).toFixed(2))} />
+        <ReceiptRow label="VAT 5%" value={formatMoney(o.vat_amount)} />
         <ReceiptRow label="Total" value={formatMoney(o.total)} strong large />
         <ReceiptRow label="Total pieces" value={String(o.pieces)} />
         {paid > 0 && <ReceiptRow label={paidWith ? `Paid (${paidWith})` : "Paid"} value={formatMoney(o.paid_amount)} />}
