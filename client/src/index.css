@@ -230,3 +230,15 @@
     transform: none !important;
   }
 }
+
+/* TAX INVOICE label: white on black, also on paper (printers drop backgrounds unless told to keep them) */
+.receipt-label {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+@media print {
+  .print-area .receipt-label {
+    background: #000 !important;
+    color: #fff !important;
+  }
+}

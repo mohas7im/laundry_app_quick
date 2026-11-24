@@ -300,8 +300,10 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
         {address && <div className="text-xs">{address}</div>}
         {company?.phone && <div className="text-xs">Tel. {company.phone}</div>}
         {trnLine && <div className="text-xs">{trnLine.trim()}</div>}
-        <div className="mx-auto mt-1.5 rounded-sm border-2 border-black px-4 py-0.5 text-base font-extrabold tracking-[0.2em]">
-          TAX INVOICE
+        <div className="mt-1.5">
+          <span className="receipt-label rounded-[3px] bg-black px-2.5 py-0.5 text-xs font-bold tracking-[0.12em] text-white">
+            TAX INVOICE
+          </span>
         </div>
       </div>
       <Rule />
@@ -324,6 +326,7 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
       </div>
       <Rule />
 
+      <div className="mb-0.5 text-right text-[10px]">Amounts in AED</div>
       <div className="grid grid-cols-[1fr_1.5rem_1.6rem_3.1rem_3.4rem] gap-x-1 text-[11px] font-semibold">
         <span>Items</span><span className="text-center">Svc</span><span className="text-right">Qty</span>
         <span className="text-right leading-tight">Unit Price</span><span className="text-right">Price</span>
