@@ -317,12 +317,10 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
         <div className="text-sm font-bold">Ready By: {readyDate(o.ready_by)}</div>
       </div>
       <Rule />
-      <div className="text-center text-xs">
-        <div className="font-semibold">
-          {o.customer_name}
-          {o.customer_address ? ` | ${o.customer_address.replace(/\n/g, ", ")}` : ""}
-        </div>
-        <div>{o.customer_phone}</div>
+      <div className="grid gap-0.5 text-xs">
+        <ReceiptRow label="Customer Name" value={o.customer_name} strong />
+        <ReceiptRow label="Phone" value={o.customer_phone} />
+        {o.customer_address && <ReceiptRow label="Address" value={o.customer_address.replace(/\n/g, ", ")} />}
       </div>
       <Rule />
 

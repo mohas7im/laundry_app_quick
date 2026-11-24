@@ -332,7 +332,7 @@ class OrderCreateSerializer(OrderInputSerializer):
         counter.save(update_fields=['last_number'])
 
         order = Order.objects.create(
-            number=f'{branch.code}-{counter.last_number:05d}', branch=branch,
+            number=str(counter.last_number), branch=branch,  # Comfort: plain invoice numbers (3001, 3002, ...)
             payment_method=data['payment_method'], created_by=user, **self._fields(),
         )
         self._save_lines(order)
