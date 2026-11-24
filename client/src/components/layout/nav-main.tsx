@@ -20,6 +20,8 @@ import { menuIcon } from "@/lib/icons"
 
 type Node = MyMenu & { children: Node[] }
 
+const HIDDEN_MENUS = new Set(["branches"])
+
 /** /api/menus/my/ is a flat list in display order; rebuild the tree from `parent`. */
 function buildTree(menus: MyMenu[]): Node[] {
   const nodes = new Map(menus.map((m) => [m.id, { ...m, children: [] as Node[] }]))
@@ -60,7 +62,8 @@ export function NavMain() {
   }
 
   const activeId = findMenuForPath(data, pathname)?.id
-  const roots = buildTree(data ?? [])
+  // Comfort go-live: pages hidden from the sidebar for now (Branches: one branch; enable later)
+  const roots = buildTree((data ?? []).filter((m) => !HIDDEN_MENUS.has(m.code)))
 
   // Consecutive top-level items outside headers share one unlabelled section.
   const sections: { key: string; label?: string; items: Node[] }[] = []
