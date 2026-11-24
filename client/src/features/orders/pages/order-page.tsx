@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import JsBarcode from "jsbarcode"
 import { Link, useParams, useSearchParams } from "react-router"
 import {
   ArrowLeftIcon,
@@ -257,51 +258,82 @@ function Payments({ order: o }: { order: Order }) {
   )
 }
 
-/** Sized like an 80 mm thermal receipt; the only thing printed (see .print-area in index.css). */
+/** Barcode of the order number (Code 128), so the counter can scan the receipt. */
+function OrderBarcode({ value }: { value: string }) {
+  const ref = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    if (ref.current) JsBarcode(ref.current, value, { format: "CODE128", width: 1.6, height: 42, displayValue: false, margin: 0 })
+  }, [value])
+  return <svg ref={ref} className="mx-auto h-[42px] max-w-full" aria-label={`Barcode ${value}`} />
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0")
+/** 24/11/26 19:06 */
+const dropDate = (iso: string) => {
+  const d = new Date(iso)
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+/** 6pm Thu 26/11 */
+const readyDate = (iso: string) => {
+  const d = new Date(iso)
+  const h = d.getHours(), m = d.getMinutes()
+  const hour = `${h % 12 || 12}${m ? ":" + pad2(m) : ""}${h < 12 ? "am" : "pm"}`
+  return `${hour} ${d.toLocaleDateString("en-GB", { weekday: "short" })} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`
+}
+
+/** Sized like an 80 mm thermal receipt; the only thing printed (see .print-area in index.css). Layout follows the
+ *  CleanCloud receipt the staff already know. */
 function Receipt({ order: o, company }: { order: Order; company: CompanySettings | null }) {
   const paid = Number(o.paid_amount)
-  // how the money was actually paid (from the payments), e.g. "Cash, Card"
   const paidWith = [...new Set(o.payments.filter((p) => p.kind === "payment").map((p) => p.method_name))].join(", ")
   const balance = Number(o.balance)
+  const net = (Number(o.total) - Number(o.vat_amount)).toFixed(2)
+  const lines = (company?.address || "").split("\n")
+  const trnLine = lines.find((l) => /^TRN/i.test(l.trim()))
+  const address = lines.filter((l) => l !== trnLine).join(", ")
+  const Rule = () => <div className="my-2 border-t border-dashed" />
   return (
     <div className="print-area mx-auto w-full max-w-sm rounded-lg border bg-card p-5 text-sm text-card-foreground">
-      <div className="grid gap-1 text-center">
-        {company?.logo && <img src={company.logo} alt="" className="mx-auto max-h-16 max-w-[60%] object-contain" />}
+      <div className="grid gap-0.5 text-center">
+        {company?.logo && <img src={company.logo} alt="" className="mx-auto mb-1 max-h-16 max-w-[60%] object-contain" />}
         <div className="text-base font-semibold">{company?.name || o.branch_name}</div>
-        {company?.name && <div className="text-xs">{o.branch_name}</div>}
-        {company?.address && <div className="text-xs whitespace-pre-line text-muted-foreground">{company.address}</div>}
-        {(company?.phone || company?.email) && (
-          <div className="text-xs text-muted-foreground">{[company.phone, company.email].filter(Boolean).join(" · ")}</div>
-        )}
-        <div className="text-xs text-muted-foreground">Prices include VAT</div>
+        <div className="text-xs">{o.branch_name}{address ? ` · ${address}` : ""}</div>
+        <div className="text-xs">
+          {company?.phone ? `Tel. ${company.phone} | ` : ""}
+          <span className="font-bold">TAX INVOICE</span>
+        </div>
+        {trnLine && <div className="text-xs">{trnLine.trim()}</div>}
       </div>
-
-      <div className="my-3 border-t border-dashed" />
-      <div className="text-center">
-        <div className="text-sm font-bold tracking-widest uppercase">Tax Invoice</div>
-        <div className="text-xs text-muted-foreground">Order</div>
-        <div className="text-2xl font-bold tracking-wide tabular-nums">{o.number}</div>
-        {o.is_express && <div className="text-xs font-semibold uppercase">Express</div>}
+      <Rule />
+      <div className="grid gap-1 text-center">
+        <div className="text-2xl font-bold tracking-wide tabular-nums">INV# {o.number}</div>
+        <OrderBarcode value={o.number} />
+        {o.is_express && <div className="text-xs font-bold uppercase">Express</div>}
       </div>
-      <div className="my-3 border-t border-dashed" />
-
-      <ReceiptRow label="Customer" value={o.customer_name} />
-      {o.customer_address && <div className="text-right text-xs whitespace-pre-line">{o.customer_address}</div>}
-      <ReceiptRow label="Phone" value={o.customer_phone} />
-      <ReceiptRow label="Taken" value={longDate.format(new Date(o.created_at))} />
-      <ReceiptRow label="Ready by" value={longDate.format(new Date(o.ready_by))} strong />
-      <ReceiptRow label="Served by" value={o.created_by_name} />
-
-      <div className="my-3 border-t border-dashed" />
-
-      <div className="grid grid-cols-[1fr_1.6rem_2rem_3.2rem_3.6rem] gap-x-1 border-b border-dashed pb-1 text-[11px] font-semibold">
-        <span>Item</span><span className="text-center">Svc</span><span className="text-right">Qty</span>
-        <span className="text-right">Unit</span><span className="text-right">Price</span>
+      <Rule />
+      <div className="grid gap-0.5 text-center text-xs">
+        <div>Drop Date: {dropDate(o.created_at)}</div>
+        <div>Served by: {o.created_by_name}</div>
+        <div className="text-sm font-bold">Ready By: {readyDate(o.ready_by)}</div>
       </div>
-      <div className="mt-1 grid gap-1.5">
+      <Rule />
+      <div className="text-center text-xs">
+        <div className="font-semibold">
+          {o.customer_name}
+          {o.customer_address ? ` | ${o.customer_address.replace(/\n/g, ", ")}` : ""}
+        </div>
+        <div>{o.customer_phone}</div>
+      </div>
+      <Rule />
+
+      <div className="grid grid-cols-[1fr_1.5rem_1.6rem_3.1rem_3.4rem] gap-x-1 text-[11px] font-semibold">
+        <span>Items</span><span className="text-center">Svc</span><span className="text-right">Qty</span>
+        <span className="text-right leading-tight">Unit Price</span><span className="text-right">Price</span>
+      </div>
+      <div className="mt-1 border-t border-dashed pt-1 grid gap-1">
         {o.lines.map((line) => (
           <div key={line.id} className="grid">
-            <div className="grid grid-cols-[1fr_1.6rem_2rem_3.2rem_3.6rem] gap-x-1 text-xs tabular-nums">
+            <div className="grid grid-cols-[1fr_1.5rem_1.6rem_3.1rem_3.4rem] gap-x-1 text-xs tabular-nums">
               <span className="font-medium">{line.item_name}</span>
               <span className="text-center">{line.service_name.charAt(0).toUpperCase()}</span>
               <span className="text-right">{line.quantity}{UNIT_SUFFIX[line.pricing_type] ? UNIT_SUFFIX[line.pricing_type].trim() : ""}</span>
@@ -309,84 +341,63 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
               <span className="text-right">{Number(line.line_total).toFixed(2)}</span>
             </div>
             {line.upcharges.map((u) => (
-              <span key={u.name} className="flex justify-between text-xs text-muted-foreground">
+              <span key={u.name} className="flex justify-between pl-2 text-[11px]">
                 <span>+ {u.name}</span>
-                <span className="tabular-nums">{formatMoney(u.amount)}</span>
+                <span className="tabular-nums">{Number(u.amount).toFixed(2)}</span>
               </span>
             ))}
             {line.pieces.map((p, i) =>
               isEmptyPiece(p) ? null : (
-                <span key={i} className="text-xs text-muted-foreground">
-                  #{i + 1} {pieceSummary(p)}
-                </span>
+                <span key={i} className="pl-2 text-[11px]">#{i + 1} {pieceSummary(p)}</span>
               ),
             )}
           </div>
         ))}
         {o.bag_drop_pieces > 0 && (
-          <div className="flex justify-between">
+          <div className="flex justify-between text-xs">
             <span>Bag drop: {o.bag_drop_pieces} pieces</span>
-            <span className="text-xs text-muted-foreground">items to be added</span>
+            <span>items to be added</span>
           </div>
         )}
       </div>
+      <Rule />
 
-      <div className="my-3 border-t border-dashed" />
-
-      <div className="grid gap-1 tabular-nums">
+      <div className="grid gap-0.5 tabular-nums">
         {Number(o.discount_amount) > 0 && (
           <>
-            <ReceiptRow label="Items total" value={formatMoney(o.subtotal)} />
+            <ReceiptRow label="Items total" value={Number(o.subtotal).toFixed(2)} />
             <ReceiptRow
               label={o.discount_type === "percent" ? `Discount ${Number(o.discount_value)}%` : "Discount"}
-              value={`− ${formatMoney(o.discount_amount)}`}
+              value={`- ${Number(o.discount_amount).toFixed(2)}`}
             />
           </>
         )}
-        <ReceiptRow label="Sub total (excl. VAT)" value={formatMoney((Number(o.total) - Number(o.vat_amount)).toFixed(2))} />
-        <ReceiptRow label="VAT 5%" value={formatMoney(o.vat_amount)} />
-        <ReceiptRow label="Total" value={formatMoney(o.total)} strong large />
-        <ReceiptRow label="Total pieces" value={String(o.pieces)} />
-        {paid > 0 && <ReceiptRow label={paidWith ? `Paid (${paidWith})` : "Paid"} value={formatMoney(o.paid_amount)} />}
-        <ReceiptRow
-          label={balance > 0 ? "Balance due" : "Paid in full"}
-          value={balance > 0 ? formatMoney(o.balance) : "✓"}
-          strong
-        />
-        {paid === 0 && (
-          <div className="text-xs text-muted-foreground">{o.payment_method_name}</div>
-        )}
+        <ReceiptRow label="Sub Total" value={net} />
+        <ReceiptRow label="VAT 5%" value={Number(o.vat_amount).toFixed(2)} />
+        <ReceiptRow label="Total (AED)" value={Number(o.total).toFixed(2)} strong large />
+        <ReceiptRow label="Total Pieces" value={String(o.pieces)} />
+        {paid > 0 && <ReceiptRow label={paidWith ? `Paid (${paidWith})` : "Paid"} value={Number(o.paid_amount).toFixed(2)} />}
+        <ReceiptRow label={balance > 0 ? "Balance due" : "Paid in full"} value={balance > 0 ? Number(o.balance).toFixed(2) : "✓"} strong />
+        {paid === 0 && <div className="text-xs">{o.payment_method_name}</div>}
       </div>
 
       {(o.notes || o.preferences) && (
         <>
-          <div className="my-3 border-t border-dashed" />
-          <div className="grid gap-1 text-xs">
-            {o.preferences && (
-              <div>
-                <span className="font-medium">Preferences: </span>
-                {o.preferences}
-              </div>
-            )}
-            {o.notes && (
-              <div>
-                <span className="font-semibold">Notes: </span>
-                {o.notes}
-              </div>
-            )}
+          <Rule />
+          <div className="grid gap-0.5 text-xs">
+            <div className="font-semibold">Notes</div>
+            {o.preferences && <div>{o.preferences}</div>}
+            {o.notes && <div className="whitespace-pre-line">{o.notes}</div>}
           </div>
         </>
       )}
 
-      <div className="my-3 border-t border-dashed" />
-      <div className="text-center text-xs text-muted-foreground">
-        {o.pieces} {o.pieces === 1 ? "piece" : "pieces"} · Please bring this receipt to collect.
+      <Rule />
+      <div className="text-[11px] leading-snug">
+        <div>* VAT standard rate.</div>
+        {company?.receipt_footer && <div className="whitespace-pre-line">{company.receipt_footer}</div>}
+        <div className="mt-1 text-center">Please bring this receipt to collect.</div>
       </div>
-      {company?.receipt_footer && (
-        <div className="mt-2 text-center text-[11px] leading-snug whitespace-pre-line text-muted-foreground">
-          {company.receipt_footer}
-        </div>
-      )}
     </div>
   )
 }

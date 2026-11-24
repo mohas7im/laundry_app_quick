@@ -20,7 +20,7 @@ import { menuIcon } from "@/lib/icons"
 
 type Node = MyMenu & { children: Node[] }
 
-const HIDDEN_MENUS = new Set(["branches"])
+const HIDDEN_MENUS = new Set(["branches", "menus", "permissions", "common_masters"])
 
 /** /api/menus/my/ is a flat list in display order; rebuild the tree from `parent`. */
 function buildTree(menus: MyMenu[]): Node[] {
