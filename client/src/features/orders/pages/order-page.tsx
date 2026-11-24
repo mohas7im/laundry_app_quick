@@ -297,12 +297,12 @@ function Receipt({ order: o, company }: { order: Order; company: CompanySettings
       <div className="grid gap-0.5 text-center">
         {company?.logo && <img src={company.logo} alt="" className="mx-auto mb-1 max-h-16 max-w-[60%] object-contain" />}
         <div className="text-base font-semibold">{company?.name || o.branch_name}</div>
-        <div className="text-xs">{o.branch_name}{address ? ` · ${address}` : ""}</div>
-        <div className="text-xs">
-          {company?.phone ? `Tel. ${company.phone} | ` : ""}
-          <span className="font-bold">TAX INVOICE</span>
-        </div>
+        {address && <div className="text-xs">{address}</div>}
+        {company?.phone && <div className="text-xs">Tel. {company.phone}</div>}
         {trnLine && <div className="text-xs">{trnLine.trim()}</div>}
+        <div className="mx-auto mt-1.5 rounded-sm border-2 border-black px-4 py-0.5 text-base font-extrabold tracking-[0.2em]">
+          TAX INVOICE
+        </div>
       </div>
       <Rule />
       <div className="grid gap-1 text-center">
