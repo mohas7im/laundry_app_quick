@@ -12,7 +12,8 @@ from customers.preferences import preferences_text
 from masters.models import CommonMaster
 from masters.registry import DISCOUNT_TYPE, ITEM_COLOUR, ITEM_DAMAGE, ITEM_STAIN, PAYMENT_METHOD
 from .approval import approve, discount_need, paid_order_need
-from .models import BranchOrderCounter, Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
+from .numbering import next_order_number
+from .models import Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
 from .payments import record_payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
 
@@ -326,13 +327,8 @@ class OrderCreateSerializer(OrderInputSerializer):
     def save(self, *, branch, user):
         data = self.validated_data
 
-        # number: lock the branch's counter so two counters never get the same number
-        counter, _ = BranchOrderCounter.objects.select_for_update().get_or_create(branch=branch)
-        counter.last_number += 1
-        counter.save(update_fields=['last_number'])
-
         order = Order.objects.create(
-            number=str(counter.last_number), branch=branch,  # Comfort: plain invoice numbers (3001, 3002, ...)
+            number=next_order_number(branch), branch=branch,
             payment_method=data['payment_method'], created_by=user, **self._fields(),
         )
         self._save_lines(order)

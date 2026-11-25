@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { FormField } from "@/components/form-field"
 import { PageHeader } from "@/components/page-header"
+import { SelectField } from "@/components/select-field"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +16,7 @@ import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api/errors"
 import { useAuth } from "@/lib/auth/use-auth"
 import { useRecords } from "@/lib/use-records"
 import { getCompanySettings, saveCompanySettings } from "../services/company.service"
-import type { CompanySettings, CompanySettingsRequest } from "../types"
+import type { CompanySettings, CompanySettingsRequest, InvoiceNumbering } from "../types"
 
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"]
 const LOGO_MAX_BYTES = 300 * 1024
@@ -53,7 +54,9 @@ function CompanyForm({ saved, onSaved }: { saved: CompanySettings; onSaved: (s: 
     phone: saved.phone,
     email: saved.email,
     receipt_footer: saved.receipt_footer,
+    invoice_numbering: saved.invoice_numbering,
   }))
+  const [nextNumber, setNextNumber] = useState(String(saved.next_invoice_number))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -83,8 +86,19 @@ function CompanyForm({ saved, onSaved }: { saved: CompanySettings; onSaved: (s: 
     if (saving || readOnly) return
     setSaving(true)
     setErrors({})
+    // only a changed next number is sent: orders taken while this page was open keep their numbers
+    const nextChanged = values.invoice_numbering === "company" && nextNumber.trim() !== String(saved.next_invoice_number)
+    if (nextChanged && !/^[1-9]\d{0,8}$/.test(nextNumber.trim())) {
+      setErrors({ next_invoice_number: "Enter a whole number, 1 or more." })
+      setSaving(false)
+      return
+    }
     try {
-      onSaved(await saveCompanySettings(values))
+      const result = await saveCompanySettings(
+        nextChanged ? { ...values, next_invoice_number: Number(nextNumber.trim()) } : values,
+      )
+      onSaved(result)
+      setNextNumber(String(result.next_invoice_number))
       toast.success("Company settings saved")
     } catch (err) {
       const fieldErrors = getApiFieldErrors(err)
@@ -181,6 +195,38 @@ function CompanyForm({ saved, onSaved }: { saved: CompanySettings; onSaved: (s: 
 
         <Card>
           <CardHeader>
+            <CardTitle>Invoice numbers</CardTitle>
+            <CardDescription>How new orders are numbered. Orders already taken keep their numbers.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Numbering" error={errors.invoice_numbering}
+              hint={values.invoice_numbering === "company"
+                ? "All branches share one sequence: 3001, 3002, …"
+                : "Each branch counts on its own, with its code: KC33-00001."}>
+              {(f) => (
+                <SelectField id={f.id} aria-invalid={f["aria-invalid"]} disabled={readOnly}
+                  value={values.invoice_numbering}
+                  onValueChange={(v) => v && set("invoice_numbering", v as InvoiceNumbering)}
+                  options={[
+                    { value: "company", label: "One sequence for all branches" },
+                    { value: "branch", label: "Per branch, with the branch code" },
+                  ]} />
+              )}
+            </FormField>
+            {values.invoice_numbering === "company" && (
+              <FormField label="Next invoice number" error={errors.next_invoice_number}
+                hint="A number already used is skipped.">
+                {(f) => (
+                  <Input {...f} disabled={readOnly} inputMode="numeric" value={nextNumber}
+                    onChange={(e) => setNextNumber(e.target.value)} />
+                )}
+              </FormField>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Receipt</CardTitle>
             <CardDescription>Printed at the bottom of every receipt.</CardDescription>
           </CardHeader>
@@ -223,7 +269,9 @@ function ReceiptHeaderPreview({ company }: { company: CompanySettingsRequest }) 
         <div className="text-muted-foreground">{[company.phone, company.email].filter(Boolean).join(" · ")}</div>
       )}
       <div className="my-1 border-t border-dashed" />
-      <div className="text-muted-foreground">Order DXB1-00001 · 2 × Shirt … AED 16.00</div>
+      <div className="text-muted-foreground">
+        INV# {company.invoice_numbering === "company" ? "3001" : "KC33-00001"} · 2 × Shirt … AED 16.00
+      </div>
       <div className="my-1 border-t border-dashed" />
       <div className="whitespace-pre-line text-muted-foreground">{company.receipt_footer || "Footer / terms"}</div>
     </div>

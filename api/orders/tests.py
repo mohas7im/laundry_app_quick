@@ -10,6 +10,7 @@ from accounts.tests import body, error_fields
 from cashier.models import Shift
 from catalogue.models import Price, PriceList, Service
 from catalogue.tests import make_item, make_upcharge
+from company.models import CompanySettings
 from customers.models import Customer
 from .models import Order, OrderStatusHistory, Payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
@@ -120,6 +121,23 @@ class OrderApiTests(OrderFixture):
         self.assertEqual(body(self.order())['number'], 'DXB1-00002')
         self.login(self.shj)
         self.assertEqual(body(self.order())['number'], 'SHJ1-00001')
+
+    def test_one_sequence_for_all_branches(self):
+        settings = CompanySettings.current()
+        settings.invoice_numbering = CompanySettings.InvoiceNumbering.COMPANY
+        settings.last_invoice_number = 3000
+        settings.save()
+        self.login(self.dxb)
+        self.assertEqual(body(self.order())['number'], '3001')
+        # the second branch continues the same sequence: no clash with the first
+        self.login(self.shj)
+        self.assertEqual(body(self.order())['number'], '3002')
+        # a number already used (the next number set back by hand) is skipped, not an error
+        CompanySettings.objects.update(last_invoice_number=3000)
+        res = self.order()
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(body(res)['number'], '3003')
+        self.assertEqual(CompanySettings.current().last_invoice_number, 3003)
 
     def test_prices_come_from_the_price_list(self):
         res = self.order(lines=[{'item': str(self.kandura.id), 'service': str(self.dry.id), 'quantity': '1',

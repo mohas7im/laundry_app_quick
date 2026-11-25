@@ -14,6 +14,15 @@ class CompanySettings(models.Model):
     phone = models.CharField(max_length=40, blank=True)
     email = models.EmailField(blank=True)
     receipt_footer = models.TextField(blank=True, help_text='Terms printed at the bottom of every receipt.')
+
+    class InvoiceNumbering(models.TextChoices):
+        BRANCH = 'branch', 'Per branch (KC33-00001)'
+        COMPANY = 'company', 'One sequence for all branches (3001)'
+
+    invoice_numbering = models.CharField(max_length=10, choices=InvoiceNumbering.choices,
+                                         default=InvoiceNumbering.BRANCH)
+    last_invoice_number = models.PositiveIntegerField(
+        default=0, help_text='The last company-wide invoice number used (one-sequence numbering).')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
