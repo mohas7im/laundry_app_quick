@@ -144,7 +144,7 @@ export function CustomersPage() {
 
   return (
     <>
-      <PageHeader title="Customers" description="Everyone who brings laundry to any of your branches." />
+      <PageHeader title="Customers" description="Manage customer contact details and preferences." />
 
       <DataTable
         columns={columns}

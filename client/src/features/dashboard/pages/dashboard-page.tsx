@@ -19,14 +19,7 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title={`Welcome, ${user.full_name.split(" ")[0]}`}
-        description={
-          activeBranch
-            ? `You're working in ${activeBranch.name} as ${activeBranch.roles.map((r) => r.name).join(", ") || "staff"}.`
-            : "Create your first branch to get started."
-        }
-      />
+      <PageHeader title="Dashboard" description="Overview of orders, sales and payments." />
       {business ? (
         <BusinessDashboard />
       ) : (

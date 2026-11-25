@@ -27,7 +27,7 @@ export function CompanySettingsPage() {
 
   return (
     <>
-      <PageHeader title="Configuration" description="Your business details. They print on every receipt." />
+      <PageHeader title="Configuration" description="Company details, invoice numbering and receipt settings." />
       {settings.loading ? (
         <div className="flex h-40 items-center justify-center gap-2 text-muted-foreground">
           <Spinner />

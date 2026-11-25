@@ -111,7 +111,7 @@ export function UsersPage() {
     <>
       <PageHeader
         title="Users"
-        description="Staff accounts and the branches they can work in."
+        description="Manage staff accounts, roles and branch access."
       />
 
       <DataTable

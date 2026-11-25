@@ -87,7 +87,7 @@ export function PriceListsPage() {
     <>
       <PageHeader
         title="Price Lists"
-        description="Sets of prices: Walk-in, Online, a hotel contract. The default is used for everyone else."
+        description="Manage price lists such as Walk-in and Online."
       />
 
       <DataTable

@@ -79,39 +79,6 @@
   --sidebar-ring: oklch(0.62 0.17 262);
 }
 
-/* Login brand panel: fixed navy + garment-tag colours, and the tag animations. */
-@theme {
-  --color-night: #0a1a3f;
-  --color-ink: #111c33;
-  --color-tag-yellow: #f3d774;
-  --color-tag-mint: #cde7d3;
-  --color-tag-white: #f4f1e8;
-
-  --animate-tag-drop: tag-drop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-tag-sway: tag-sway 7s ease-in-out infinite;
-
-  @keyframes tag-drop {
-    from {
-      translate: 0 -18px;
-      opacity: 0;
-    }
-    to {
-      translate: 0 0;
-      opacity: 1;
-    }
-  }
-
-  @keyframes tag-sway {
-    0%,
-    100% {
-      rotate: calc(var(--tilt, 0deg) - 1.6deg);
-    }
-    50% {
-      rotate: calc(var(--tilt, 0deg) + 1.6deg);
-    }
-  }
-}
-
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;

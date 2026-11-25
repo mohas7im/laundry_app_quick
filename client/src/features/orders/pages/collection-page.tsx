@@ -103,7 +103,7 @@ export function CollectionPage() {
 
   return (
     <>
-      <PageHeader title="Collection" description="Hand ready orders back and take what's due." />
+      <PageHeader title="Collection" description="Hand over ready orders and collect any balance due." />
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">

@@ -36,7 +36,7 @@ const DATE_RANGES: { label: string; from: keyof OrderSearch; to: keyof OrderSear
 /** Orders of the active branch: search by dates, status and payment. */
 export function OrdersPage() {
   const navigate = useNavigate()
-  const { can, activeBranch } = useAuth()
+  const { can } = useAuth()
   const paymentMethods = useMasters(MASTER.PAYMENT_METHOD)
 
   // the form, and the search last run (Search applies the form)
@@ -181,7 +181,7 @@ export function OrdersPage() {
     <>
       <PageHeader
         title="Orders"
-        description={activeBranch ? `Orders taken at ${activeBranch.name}.` : "Orders taken at this branch."}
+        description="Search, view and manage orders for this branch."
       />
 
       <form

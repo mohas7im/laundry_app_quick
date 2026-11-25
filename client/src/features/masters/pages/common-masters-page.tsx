@@ -27,7 +27,7 @@ export function CommonMastersPage() {
 
   return (
     <>
-      <PageHeader title="Common Masters" description="The lists used across the app. Pick a list to manage its values." />
+      <PageHeader title="Common Masters" description="Manage the dropdown values used across the system." />
 
       {types.loading ? (
         <div className="flex h-40 items-center justify-center gap-2 text-muted-foreground">
