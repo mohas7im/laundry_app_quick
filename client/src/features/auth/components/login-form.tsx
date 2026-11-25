@@ -70,12 +70,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
       {/* disabled while logging in: no edits or second submit mid-request */}
       <FieldSet disabled={pending}>
         <FieldGroup>
-          <div className="flex flex-col items-center gap-1 text-center">
-            <h1 className="text-3xl font-bold">Log in to your account</h1>
-            <p className="text-sm text-balance text-muted-foreground">
-              Use the email and password your shop owner gave you.
-            </p>
-          </div>
+          <h1 className="text-center text-2xl font-semibold">Log in</h1>
 
           {expired && !error && (
             <Alert>
@@ -135,9 +130,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
               {pending && <Spinner data-icon="inline-start" />}
               Log in
             </Button>
-            <FieldDescription className="text-center">
-              Forgot your password? Ask your shop owner to reset it.
-            </FieldDescription>
+            <FieldDescription className="text-center">Forgot your password? Contact your administrator.</FieldDescription>
           </Field>
         </FieldGroup>
       </FieldSet>

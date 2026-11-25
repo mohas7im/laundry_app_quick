@@ -34,7 +34,7 @@ export function ReportsPage() {
     <>
       <PageHeader
         title="Reports"
-        description="The end-of-day summary and exports for this branch."
+        description="Daily summary and reports for this branch."
         actions={
           <Button variant="outline" disabled={!summary.data} onClick={() => window.print()}>
             <PrinterIcon data-icon="inline-start" />

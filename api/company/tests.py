@@ -38,6 +38,26 @@ class CompanySettingsTests(Base):
         self.client.put('/api/company/', self.payload(logo=''), format='json')
         self.assertEqual(CompanySettings.current().logo, '')
 
+    def test_invoice_numbering(self):
+        self.as_owner()
+        data = body(self.client.get('/api/company/'))
+        self.assertEqual((data['invoice_numbering'], data['next_invoice_number']), ('branch', 1))
+
+        res = self.client.put('/api/company/', self.payload(invoice_numbering='company', next_invoice_number=3001),
+                              format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        saved = CompanySettings.current()
+        self.assertEqual((saved.invoice_numbering, saved.last_invoice_number), ('company', 3000))
+
+        # orders taken meanwhile: saving the other settings (no next number sent) leaves the counter alone
+        CompanySettings.objects.update(last_invoice_number=3005)
+        self.client.put('/api/company/', self.payload(invoice_numbering='company'), format='json')
+        self.assertEqual(CompanySettings.current().last_invoice_number, 3005)
+
+        put = lambda **kw: self.client.put('/api/company/', self.payload(**kw), format='json')  # noqa: E731
+        self.assertEqual(error_fields(put(invoice_numbering='yearly')), {'invoice_numbering'})
+        self.assertEqual(error_fields(put(next_invoice_number=0)), {'next_invoice_number'})
+
     def test_validation(self):
         self.as_owner()
         put = lambda **kw: self.client.put('/api/company/', self.payload(**kw), format='json')  # noqa: E731

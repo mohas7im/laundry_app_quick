@@ -41,7 +41,8 @@ class Order(models.Model):
         PERCENT = 'percent', 'Percent'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    number = models.CharField(max_length=30, unique=True, help_text='Branch code + sequence, e.g. DXB1-00001.')
+    number = models.CharField(max_length=30, unique=True, help_text='Invoice number: KC33-00001 (per branch) or 3001 (one '
+                                                                   'sequence); chosen in Configuration.')
     branch = models.ForeignKey('branches.Branch', on_delete=models.PROTECT, related_name='orders')
     customer = models.ForeignKey('customers.Customer', on_delete=models.PROTECT, related_name='orders')
     price_list = models.ForeignKey('catalogue.PriceList', on_delete=models.PROTECT, related_name='orders')

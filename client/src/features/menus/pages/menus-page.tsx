@@ -103,7 +103,7 @@ export function MenusPage() {
 
   return (
     <>
-      <PageHeader title="Menus" description="Every feature in the app. Each one has a permission for every action." />
+      <PageHeader title="Menus" description="Manage sidebar menus and their permissions." />
 
       <DataTable
         columns={columns}

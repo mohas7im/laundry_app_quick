@@ -78,7 +78,7 @@ export function RolesPage() {
 
   return (
     <>
-      <PageHeader title="Roles" description="Create roles, then set what each one can do on the Permissions page." />
+      <PageHeader title="Roles" description="Manage user roles." />
 
       <DataTable
         columns={columns}

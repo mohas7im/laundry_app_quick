@@ -97,7 +97,7 @@ export function PricesPage() {
     <>
       <PageHeader
         title="Prices"
-        description="What each item costs for each service. Prices include VAT."
+        description="Set the price of each item for each service. Prices include VAT."
         actions={
           can("prices.edit") && (
             <Button variant="outline" onClick={() => setImporting(true)}>

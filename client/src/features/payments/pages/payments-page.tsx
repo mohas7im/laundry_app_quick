@@ -75,7 +75,7 @@ export function PaymentsPage() {
 
   return (
     <>
-      <PageHeader title="Payments" description="Money taken and given back at this branch." />
+      <PageHeader title="Payments" description="Payments and refunds recorded at this branch." />
 
       <Field className="max-w-48">
         <FieldLabel htmlFor="payments-date">Day</FieldLabel>

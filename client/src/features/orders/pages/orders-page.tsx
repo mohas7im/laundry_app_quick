@@ -36,7 +36,7 @@ const DATE_RANGES: { label: string; from: keyof OrderSearch; to: keyof OrderSear
 /** Orders of the active branch: search by dates, status and payment. */
 export function OrdersPage() {
   const navigate = useNavigate()
-  const { can, activeBranch } = useAuth()
+  const { can } = useAuth()
   const paymentMethods = useMasters(MASTER.PAYMENT_METHOD)
 
   // the form, and the search last run (Search applies the form)
@@ -161,19 +161,27 @@ export function OrdersPage() {
             >
               <PrinterIcon />
             </Button>
-            <RowActionButtons label={row.original.number} onView={() => navigate(`/orders/${row.original.id}`)} />
+            <RowActionButtons
+              label={row.original.number}
+              onView={() => navigate(`/orders/${row.original.id}`)}
+              onEdit={
+                can("orders.edit") && (row.original.status === "received" || row.original.status === "ready")
+                  ? () => navigate(`/orders/${row.original.id}/edit`)
+                  : undefined
+              }
+            />
           </div>
         ),
       },
     ],
-    [navigate],
+    [navigate, can],
   )
 
   return (
     <>
       <PageHeader
         title="Orders"
-        description={activeBranch ? `Orders taken at ${activeBranch.name}.` : "Orders taken at this branch."}
+        description="Search, view and manage orders for this branch."
       />
 
       <form
@@ -223,9 +231,9 @@ export function OrdersPage() {
             ]}
           />
           {DATE_RANGES.map((range) => (
-            <div key={range.label} className="grid gap-1.5">
+            <div key={range.label} className="grid gap-1.5 sm:col-span-2">
               <Label>{range.label}</Label>
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
                 <Input
                   type="date"
                   aria-label={`${range.label} from`}

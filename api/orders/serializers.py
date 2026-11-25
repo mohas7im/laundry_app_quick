@@ -12,7 +12,8 @@ from customers.preferences import preferences_text
 from masters.models import CommonMaster
 from masters.registry import DISCOUNT_TYPE, ITEM_COLOUR, ITEM_DAMAGE, ITEM_STAIN, PAYMENT_METHOD
 from .approval import approve, discount_need, paid_order_need
-from .models import BranchOrderCounter, Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
+from .numbering import next_order_number
+from .models import Order, OrderLine, OrderLineUpcharge, OrderStatusHistory, Payment
 from .payments import record_payment
 from .pricing import LineInput, UpchargeRate, order_totals, price_line, suggested_ready_by
 
@@ -326,13 +327,8 @@ class OrderCreateSerializer(OrderInputSerializer):
     def save(self, *, branch, user):
         data = self.validated_data
 
-        # number: lock the branch's counter so two counters never get the same number
-        counter, _ = BranchOrderCounter.objects.select_for_update().get_or_create(branch=branch)
-        counter.last_number += 1
-        counter.save(update_fields=['last_number'])
-
         order = Order.objects.create(
-            number=f'{branch.code}-{counter.last_number:05d}', branch=branch,
+            number=next_order_number(branch), branch=branch,
             payment_method=data['payment_method'], created_by=user, **self._fields(),
         )
         self._save_lines(order)
@@ -456,6 +452,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     stage = serializers.SlugRelatedField(slug_field='code', read_only=True)
     stage_name = serializers.CharField(source='stage.name', read_only=True, default='')
     customer_phone = serializers.CharField(source='customer.phone', read_only=True)
+    customer_address = serializers.CharField(source='customer.address', read_only=True)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     pieces = serializers.SerializerMethodField()
     summary = serializers.SerializerMethodField()
@@ -464,7 +461,7 @@ class OrderListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'status', 'stage', 'stage_name',
+        fields = ['id', 'number', 'customer', 'customer_name', 'customer_phone', 'customer_address', 'status', 'stage', 'stage_name',
                   'rack', 'is_express', 'ready_by', 'pieces', 'summary', 'notes', 'preferences', 'total',
                   'paid_amount', 'balance', 'ready_at', 'deadstock', 'collected_at', 'created_by_name', 'created_at']
 

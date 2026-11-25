@@ -73,7 +73,7 @@ export function ItemsPage() {
 
   return (
     <>
-      <PageHeader title="Items" description="What customers bring in. One list, priced per service on the Prices page." />
+      <PageHeader title="Items" description="Manage the garments and items you accept." />
 
       <DataTable
         columns={columns}

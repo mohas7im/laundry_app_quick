@@ -41,15 +41,36 @@ class ReportsTests(OrderFixture):
 
         self.assertEqual(d['on_time_30_days'], {'ready': 1, 'on_time': 1, 'percent': 100})
         self.assertEqual((d['receivables']['total'], d['receivables']['customers']), ('101.00', 1))
-        self.assertEqual(len(d['last_7_days']), 7)
-        self.assertEqual((d['last_7_days'][-1]['sales'], d['last_7_days'][-1]['collected']), ('121.00', '20.00'))
+        self.assertEqual((d['series_range'], len(d['series'])), ('7d', 7))
+        self.assertEqual((d['series'][-1]['orders'], d['series'][-1]['sales'], d['series'][-1]['collected']),
+                         (2, '121.00', '20.00'))
+        self.assertEqual(d['series'][0], {'date': d['series'][0]['date'], 'orders': 0, 'sales': '0.00', 'collected': '0.00'})
         self.assertEqual([i['item_name'] for i in d['top_items_30_days']], ['Kandura', 'Laundry by weight'])
+
+        # both orders still owe money: the oldest first
+        unpaid = d['attention']['unpaid']
+        self.assertEqual((unpaid['count'], [o['balance'] for o in unpaid['orders']]), (2, ['40.50', '60.50']))
+        self.assertEqual((d['attention']['overdue']['count'], d['attention']['not_collected']['count']), (0, 0))
+
+        # other ranges
+        self.assertEqual(len(body(self.client.get('/api/dashboard/?range=30d'))['series']), 30)
+        self.assertEqual(len(body(self.client.get('/api/dashboard/?range=month'))['series']), timezone.localdate().day)
+        self.assertEqual(error_fields(self.client.get('/api/dashboard/?range=year')), {'range'})
+
+    def test_ready_but_not_collected(self):
+        order = body(self.order())
+        self.move(order, 'ready')
+        Order.objects.filter(pk=order['id']).update(ready_at=timezone.now() - timedelta(days=8))
+        waiting = body(self.client.get('/api/dashboard/'))['attention']['not_collected']
+        self.assertEqual((waiting['count'], waiting['orders'][0]['number']), (1, order['number']))
 
     def test_overdue_and_late(self):
         late = body(self.order())
         Order.objects.filter(pk=late['id']).update(ready_by=timezone.now() - timedelta(hours=3))
         ops = body(self.client.get('/api/dashboard/'))['operations']
         self.assertEqual((ops['overdue'], ops['oldest_overdue']['number']), (1, late['number']))
+        overdue = body(self.client.get('/api/dashboard/'))['attention']['overdue']
+        self.assertEqual((overdue['count'], overdue['orders'][0]['id']), (1, late['id']))
         self.move(late, 'ready')  # ready after its ready-by: not on time
         self.assertEqual(body(self.client.get('/api/dashboard/'))['on_time_30_days']['percent'], 0)
 

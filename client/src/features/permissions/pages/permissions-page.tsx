@@ -35,7 +35,7 @@ export function PermissionsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Permissions" description="Choose what people with each role can do on each menu." />
+      <PageHeader title="Permissions" description="Set what each role can view, create, edit and delete." />
 
       {!roleId ? (
         <Alert>

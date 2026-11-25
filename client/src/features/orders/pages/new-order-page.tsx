@@ -8,6 +8,7 @@ import {
   SearchIcon,
   TagIcon,
   Trash2Icon,
+  TruckIcon,
   XIcon,
   ZapIcon,
 } from "lucide-react"
@@ -178,6 +179,23 @@ const emptyDraft: Draft = {
   dropped: 0,
 }
 
+// Comfort: delivery / pickup charge. Prices include VAT; the AED 20 limit is before VAT.
+const DELIVERY_ITEM = "delivery charge"
+const DELIVERY_UNDER = 2000 // fils, excl. VAT
+const DELIVERY_NOTE = "Delivery / Pickup"
+const DELIVERY_WAIVED = "Delivery charge waived: "
+
+/** Takes the delivery notes this screen writes back out of the order notes. */
+function splitDelivery(text: string) {
+  const parts = text.split(". ").map((p) => p.trim()).filter(Boolean)
+  const waived = parts.find((p) => p.startsWith(DELIVERY_WAIVED))
+  return {
+    delivery: parts.includes(DELIVERY_NOTE) || !!waived,
+    waived: waived ? waived.slice(DELIVERY_WAIVED.length) : "",
+    notes: parts.filter((p) => p !== DELIVERY_NOTE && p !== waived).join(". "),
+  }
+}
+
 /** "No starch. Gutra hanger" → the chips that match the quick notes, and the rest as text. */
 function splitNotes(text: string, chipNames: string[]) {
   const parts = text.split(". ").map((p) => p.trim()).filter(Boolean)
@@ -252,11 +270,21 @@ function PosScreen({
   const [search, setSearch] = useState("")
   const [customer, setCustomer] = useState<Customer | null>(initial.customer)
   const [express, setExpress] = useState(initial.express)
-  const [lines, setLines] = useState<CartLine[]>(initial.lines)
+  // the delivery charge is added by the Delivery / Pickup switch, never as a tile
+  const deliveryItem = catalogue.items.find((i) => i.name.trim().toLowerCase() === DELIVERY_ITEM) ?? null
+  const deliveryPrice = deliveryItem
+    ? catalogue.prices.find((p) => p.item === deliveryItem.id && p.price_list === catalogue.price_list.id) ?? null
+    : null
+  const isDeliveryLine = (l: { item: string }) => !!deliveryItem && l.item === deliveryItem.id
+  const [lines, setLines] = useState<CartLine[]>(() => initial.lines.filter((l) => !isDeliveryLine(l)))
+  const [initialDelivery] = useState(() => splitDelivery(initial.notes))
+  const [delivery, setDelivery] = useState(initial.lines.some(isDeliveryLine) || initialDelivery.delivery)
+  const [waived, setWaived] = useState(!!initialDelivery.waived)
+  const [waiveReason, setWaiveReason] = useState(initialDelivery.waived)
   const [bagDrop, setBagDrop] = useState(!!initial.bagPieces)
   const [bagPieces, setBagPieces] = useState(initial.bagPieces)
   const [chips, setChips] = useState<string[]>(initial.chips)
-  const [notes, setNotes] = useState(initial.notes)
+  const [notes, setNotes] = useState(initialDelivery.notes)
   const [saveNotes, setSaveNotes] = useState(false)
   const [readyBy, setReadyBy] = useState<string | null>(initial.readyBy) // null = the suggestion
   const [discountType, setDiscountType] = useState<DiscountType>(initial.discountType)
@@ -305,8 +333,15 @@ function PosScreen({
     return { line, unit, total }
   })
   const missingPrice = priced.filter((p) => p.total === null)
+  // delivery / pickup under AED 20 before VAT: + the delivery charge, unless waived with a reason
+  const goodsCents = priced.reduce((sum, p) => sum + (p.total ?? 0), 0)
+  const vatFactor = 100 + Number(catalogue.settings.vat_rate)
+  const deliveryDue =
+    delivery && !!deliveryPrice && goodsCents > 0 && goodsCents * 100 < DELIVERY_UNDER * vatFactor
+  const deliveryFee = deliveryPrice ? toCents((express && deliveryPrice.express_price) || deliveryPrice.price) : 0
+  const deliveryCents = deliveryDue && !waived ? deliveryFee : 0
   const totals = orderTotals(
-    priced.map((p) => p.total ?? 0),
+    [...priced.map((p) => p.total ?? 0), ...(deliveryCents ? [deliveryCents] : [])],
     discountType,
     discountValue,
     catalogue.settings.vat_rate,
@@ -347,7 +382,7 @@ function PosScreen({
   const tiles = useMemo(() => {
     const term = search.trim().toLowerCase()
     return catalogue.items
-      .filter((i) => priceOf(i.id, serviceId) && (!term || i.name.toLowerCase().includes(term)))
+      .filter((i) => !isDeliveryLine({ item: i.id }) && priceOf(i.id, serviceId) && (!term || i.name.toLowerCase().includes(term)))
       .sort((a, b) => (usage.get(tileKey(b.id, serviceId)) ?? 0) - (usage.get(tileKey(a.id, serviceId)) ?? 0))
   }, [catalogue, priceOf, serviceId, search, usage])
 
@@ -410,12 +445,17 @@ function PosScreen({
       while (pieces.length && isEmptyPiece(pieces[pieces.length - 1]!)) pieces.pop()
       return { item: l.item, service: l.service, quantity: l.quantity || "0", upcharges: l.upcharges, pieces }
     })
+    if (deliveryCents && deliveryItem && deliveryPrice)
+      orderLines.push({ item: deliveryItem.id, service: deliveryPrice.service, quantity: "1", upcharges: [], pieces: [] })
+    const deliveryNotes = delivery
+      ? [DELIVERY_NOTE, deliveryDue && waived ? DELIVERY_WAIVED + waiveReason.trim().replace(/\.\s+/g, ", ") : ""]
+      : []
     const common = {
       customer: customer.id,
       is_express: express,
       // shop time without an offset; the server reads it as shop time (settings.TIME_ZONE)
       ready_by: readyBy,
-      notes: [...chips, notes.trim()].filter(Boolean).join(". "),
+      notes: [...chips, ...deliveryNotes, notes.trim()].filter(Boolean).join(". "),
       save_notes: saveNotes,
       bag_drop_pieces: bagDrop ? Number(bagPieces) || 0 : 0,
       lines: orderLines,
@@ -452,6 +492,10 @@ function PosScreen({
     if (submitting) return
     if (!customer) {
       setErrors({ customer: "Choose the customer first." })
+      return
+    }
+    if (deliveryDue && waived && !waiveReason.trim()) {
+      setErrors({ delivery: "Write why the delivery charge is waived." })
       return
     }
     if (editing && !reason.trim()) {
@@ -498,7 +542,7 @@ function PosScreen({
         <CardHeader className="gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Tabs value={serviceId} onValueChange={(v) => setServiceId(v as string)}>
-              <TabsList className="flex-wrap">
+              <TabsList className="h-auto flex-wrap justify-start">
                 {catalogue.services.map((s) => (
                   <TabsTrigger key={s.id} value={s.id}>
                     {s.name}
@@ -590,6 +634,71 @@ function PosScreen({
             </div>
             <Switch id="order-express" checked={express} onCheckedChange={setExpress} />
           </div>
+
+          {deliveryItem && deliveryPrice && (
+            <div className="grid gap-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="grid gap-0.5">
+                  <Label htmlFor="order-delivery" className="flex items-center gap-1.5">
+                    <TruckIcon className="size-4" />
+                    Delivery / Pickup
+                  </Label>
+                  <span className="text-xs text-muted-foreground">
+                    Leave off for in-store drop-off. Under AED 20 (before VAT) adds the{" "}
+                    {formatMoney(fromCents(deliveryFee))} delivery charge.
+                  </span>
+                </div>
+                <Switch
+                  id="order-delivery"
+                  checked={delivery}
+                  onCheckedChange={(on) => {
+                    setDelivery(on)
+                    setWaived(false)
+                    setWaiveReason("")
+                  }}
+                />
+              </div>
+              {deliveryDue &&
+                (waived ? (
+                  <Field data-invalid={!!errors.delivery || undefined}>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span>Delivery charge waived</span>
+                      <Button
+                        variant="link"
+                        size="xs"
+                        className="h-auto p-0"
+                        onClick={() => {
+                          setWaived(false)
+                          setWaiveReason("")
+                        }}
+                      >
+                        Add it back
+                      </Button>
+                    </div>
+                    <Input
+                      aria-label="Why the delivery charge is waived"
+                      placeholder="Why? e.g. regular customer"
+                      value={waiveReason}
+                      onChange={(e) => setWaiveReason(e.target.value)}
+                    />
+                    {errors.delivery && <FieldError>{errors.delivery}</FieldError>}
+                  </Field>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span>
+                      Delivery charge <span className="font-medium tabular-nums">{formatMoney(fromCents(deliveryCents))}</span>{" "}
+                      added
+                    </span>
+                    <Button variant="outline" size="xs" onClick={() => setWaived(true)}>
+                      Waive
+                    </Button>
+                  </div>
+                ))}
+              {delivery && !deliveryDue && goodsCents > 0 && (
+                <span className="text-xs text-muted-foreground">No delivery charge: AED 20 or more before VAT.</span>
+              )}
+            </div>
+          )}
 
           {/* lines */}
           <div className="grid gap-2">
@@ -936,6 +1045,7 @@ function PosScreen({
           {/* totals */}
           <dl className="grid gap-1 rounded-lg bg-muted/40 p-3 text-sm tabular-nums">
             <TotalRow label="Subtotal" value={totals.subtotal} />
+            {deliveryCents > 0 && <TotalRow label="incl. delivery charge" value={deliveryCents} muted />}
             {totals.discount > 0 && <TotalRow label="Discount" value={-totals.discount} />}
             <TotalRow label="Total" value={totals.total} strong />
             <TotalRow label={`VAT ${Number(catalogue.settings.vat_rate)}% included`} value={totals.vat} muted />

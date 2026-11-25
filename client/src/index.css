@@ -34,6 +34,11 @@
   --chart-3: oklch(0.68 0.12 255);
   --chart-4: oklch(0.8 0.08 250);
   --chart-5: oklch(0.29 0.1 266);
+  /* dashboard series: a validated categorical order (blue, orange, aqua, yellow) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
   --sidebar: oklch(0.982 0.006 262);
   --sidebar-foreground: oklch(0.2 0.03 264);
   --sidebar-primary: oklch(0.39 0.15 264);
@@ -69,6 +74,10 @@
   --chart-3: oklch(0.8 0.09 250);
   --chart-4: oklch(0.5 0.17 264);
   --chart-5: oklch(0.4 0.14 266);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   --sidebar: oklch(0.2 0.04 266);
   --sidebar-foreground: oklch(0.96 0.01 262);
   --sidebar-primary: oklch(0.55 0.19 262);
@@ -77,39 +86,6 @@
   --sidebar-accent-foreground: oklch(0.96 0.01 262);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.62 0.17 262);
-}
-
-/* Login brand panel: fixed navy + garment-tag colours, and the tag animations. */
-@theme {
-  --color-night: #0a1a3f;
-  --color-ink: #111c33;
-  --color-tag-yellow: #f3d774;
-  --color-tag-mint: #cde7d3;
-  --color-tag-white: #f4f1e8;
-
-  --animate-tag-drop: tag-drop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-tag-sway: tag-sway 7s ease-in-out infinite;
-
-  @keyframes tag-drop {
-    from {
-      translate: 0 -18px;
-      opacity: 0;
-    }
-    to {
-      translate: 0 0;
-      opacity: 1;
-    }
-  }
-
-  @keyframes tag-sway {
-    0%,
-    100% {
-      rotate: calc(var(--tilt, 0deg) - 1.6deg);
-    }
-    50% {
-      rotate: calc(var(--tilt, 0deg) + 1.6deg);
-    }
-  }
 }
 
 @theme inline {
@@ -138,6 +114,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -171,7 +151,7 @@
 @media print {
   @page {
     size: 80mm auto;
-    margin: 3mm;
+    margin: 0;
   }
   body * {
     visibility: hidden;
@@ -184,10 +164,17 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 74mm;
+    /* 80 mm roll, printer prints the middle 72 mm: keep 6 mm each side (68 mm of content, 2 mm safety) */
+    width: 80mm;
     max-width: none;
     border: 0;
-    padding: 0;
+    padding: 2mm 6mm;
+    box-sizing: border-box;
+  }
+  /* thermal: solid black, no grey */
+  .print-area * {
+    color: #000 !important;
+    border-color: #000 !important;
     color: #000;
   }
 }
@@ -221,5 +208,17 @@
   body *:has(.print-page) {
     position: static !important;
     transform: none !important;
+  }
+}
+
+/* TAX INVOICE label: white on black, also on paper (printers drop backgrounds unless told to keep them) */
+.receipt-label {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+@media print {
+  .print-area .receipt-label {
+    background: #000 !important;
+    color: #fff !important;
   }
 }

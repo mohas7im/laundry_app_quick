@@ -76,7 +76,7 @@ export function ServicesPage() {
 
   return (
     <>
-      <PageHeader title="Services" description="What the shop does to an item: dry clean, wash & iron, press, repair." />
+      <PageHeader title="Services" description="Manage the services you offer, such as washing, dry cleaning and pressing." />
 
       <DataTable
         columns={columns}

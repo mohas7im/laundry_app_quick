@@ -2,6 +2,7 @@ import base64
 import binascii
 import re
 
+from django.db import transaction
 from rest_framework import permissions, serializers
 from rest_framework.views import APIView
 
@@ -14,10 +15,27 @@ LOGO_RE = re.compile(r'^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=\s]+)$')
 
 
 class CompanySettingsSerializer(serializers.ModelSerializer):
+    # one-sequence numbering: the number the next order gets (the counter stores the last one used)
+    next_invoice_number = serializers.IntegerField(min_value=1, max_value=999_999_999, required=False)
+
     class Meta:
         model = CompanySettings
-        fields = ['name', 'logo', 'address', 'phone', 'email', 'receipt_footer', 'updated_at']
+        fields = ['name', 'logo', 'address', 'phone', 'email', 'receipt_footer',
+                  'invoice_numbering', 'next_invoice_number', 'updated_at']
         read_only_fields = ['updated_at']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['next_invoice_number'] = instance.last_invoice_number + 1
+        return data
+
+    def update(self, instance, validated_data):
+        # sent only when the admin changes it, so saving the other settings never moves the counter
+        # back over orders taken meanwhile (a number already used is skipped anyway)
+        next_number = validated_data.pop('next_invoice_number', None)
+        if next_number is not None:
+            instance.last_invoice_number = next_number - 1
+        return super().update(instance, validated_data)
 
     def validate_name(self, value):
         value = value.strip()
@@ -58,8 +76,11 @@ class CompanySettingsView(APIView):
         return BaseResult.ok(CompanySettingsSerializer(CompanySettings.current()).data,
                              'Company settings retrieved successfully.').to_response()
 
+    @transaction.atomic
     def put(self, request):
-        serializer = CompanySettingsSerializer(CompanySettings.current(), data=request.data)
+        # locked like the invoice counter, so an order taken meanwhile is not undone by this save
+        settings = CompanySettings.objects.select_for_update().get(pk=CompanySettings.current().pk)
+        serializer = CompanySettingsSerializer(settings, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return BaseResult.ok(serializer.data, 'Company settings saved.').to_response()

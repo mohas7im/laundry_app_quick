@@ -85,7 +85,7 @@ export function ShiftsPage() {
 
   return (
     <>
-      <PageHeader title="Cash-up" description="Open your shift with the cash in the drawer; count the drawer to close it." />
+      <PageHeader title="Cash-up" description="Open and close shifts and reconcile the cash drawer." />
 
       {current.loading ? (
         <div className="flex h-40 items-center justify-center gap-2 rounded-lg border text-muted-foreground">

@@ -204,7 +204,7 @@ export function ProductionPage() {
     <>
       <PageHeader
         title="Production"
-        description="Orders in the workshop, late ones first. Move them along until they're ready."
+        description="Track orders through processing until they are ready."
         actions={
           <div className="flex gap-2">
             <Button variant="outline" disabled={!toClean.length} onClick={() => window.print()}>

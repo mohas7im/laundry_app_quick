@@ -1,6 +1,5 @@
 import * as React from "react"
 import { Link } from "react-router"
-import { WashingMachineIcon } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
 import { NavUser } from "@/components/layout/nav-user"
@@ -25,8 +24,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link to="/" />}
             >
-              <WashingMachineIcon className="size-5!" />
-              <span className="text-base font-semibold">{APP_NAME}</span>
+              <img src="/comfort-logo.png" alt={APP_NAME} className="h-10 w-auto" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

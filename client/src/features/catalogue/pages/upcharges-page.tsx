@@ -82,7 +82,7 @@ export function UpchargesPage() {
 
   return (
     <>
-      <PageHeader title="Upcharges" description="Extra charges on an order line: stain removal, starch, urgent, hanger." />
+      <PageHeader title="Upcharges" description="Manage extra charges such as stain removal and starch." />
 
       <DataTable
         columns={columns}

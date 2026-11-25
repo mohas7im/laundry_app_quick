@@ -89,7 +89,7 @@ export function BranchesPage() {
     <>
       <PageHeader
         title="Branches"
-        description="Shop locations. Staff are assigned to branches on the Users page."
+        description="Manage branch locations, contact details and opening hours."
       />
 
       <DataTable
