@@ -11,6 +11,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, F, Max, Min, Q, Sum
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from cashier.models import Shift
@@ -152,17 +153,48 @@ def shifts_closed(branch_id, start, end):
     return [shift_report(s) for s in shifts]
 
 
-def daily_series(branch_id, last_day, days=7):
-    """Orders, sales and money collected for each of the last `days` shop days."""
+def daily_series(branch_id, first_day, last_day):
+    """Orders, sales and money collected for each shop day from first_day to last_day (both included)."""
+    tz = timezone.get_current_timezone()
+    start, _ = day_bounds(first_day)
+    _, end = day_bounds(last_day)
+    orders = {row['day']: row for row in _orders(branch_id, start, end)
+              .annotate(day=TruncDate('created_at', tzinfo=tz)).values('day')
+              .annotate(n=Count('id'), total=Sum('total'))}
+    paid = {row['day']: row for row in Payment.objects
+            .filter(order__branch_id=branch_id, created_at__gte=start, created_at__lt=end)
+            .annotate(day=TruncDate('created_at', tzinfo=tz)).values('day')
+            .annotate(taken=Sum('amount', filter=Q(kind=Payment.Kind.PAYMENT)),
+                      refunded=Sum('amount', filter=~Q(kind=Payment.Kind.PAYMENT)))}
     series = []
-    for offset in range(days - 1, -1, -1):
-        day = last_day - timedelta(days=offset)
-        start, end = day_bounds(day)
-        orders = _orders(branch_id, start, end).aggregate(n=Count('id'), total=Sum('total'))
-        pay = collected(branch_id, start, end)
-        series.append({'date': day.isoformat(), 'orders': orders['n'], 'sales': money(orders['total']),
-                       'collected': pay['net']})
+    for offset in range((last_day - first_day).days + 1):
+        day = first_day + timedelta(days=offset)
+        o, p = orders.get(day, {}), paid.get(day, {})
+        series.append({'date': day.isoformat(), 'orders': o.get('n', 0), 'sales': money(o.get('total')),
+                       'collected': money((p.get('taken') or ZERO) - (p.get('refunded') or ZERO))})
     return series
+
+
+def attention(branch_id, now, limit=5):
+    """Orders someone should act on: overdue in the workshop, ready but not collected for 7+ days,
+    unpaid balances. The oldest first; each list is cut to `limit`, with the full count beside it."""
+    open_orders = Order.objects.filter(branch_id=branch_id).select_related('customer')
+    overdue = open_orders.filter(status=Order.Status.RECEIVED, ready_by__lt=now).order_by('ready_by')
+    waiting = open_orders.filter(status=Order.Status.READY, ready_at__lte=now - timedelta(days=7)).order_by('ready_at')
+    unpaid = (open_orders.exclude(status=Order.Status.CANCELLED).filter(total__gt=F('paid_amount'))
+              .order_by('created_at'))
+
+    def rows(orders, when):
+        return [{'id': str(o.id), 'number': o.number, 'customer_name': o.customer.name,
+                 'customer_phone': o.customer.phone, 'is_express': o.is_express,
+                 'date': getattr(o, when), 'balance': money(o.total - o.paid_amount)}
+                for o in orders[:limit]]
+
+    return {
+        'overdue': {'count': overdue.count(), 'orders': rows(overdue, 'ready_by')},
+        'not_collected': {'count': waiting.count(), 'orders': rows(waiting, 'ready_at')},
+        'unpaid': {'count': unpaid.count(), 'orders': rows(unpaid, 'created_at')},
+    }
 
 
 def top_items(branch_id, start, end, limit=5):

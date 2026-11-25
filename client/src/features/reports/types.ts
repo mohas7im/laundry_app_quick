@@ -28,7 +28,27 @@ export interface OnTime {
   percent: number | null
 }
 
-/** GET /api/dashboard/ */
+export type SeriesRange = "7d" | "30d" | "month"
+
+/** An order in one of the dashboard's "needs attention" lists. */
+export interface AttentionOrder {
+  id: string
+  number: string
+  customer_name: string
+  customer_phone: string
+  is_express: boolean
+  /** overdue: ready-by time · not collected: when it became ready · unpaid: when it was taken */
+  date: string
+  balance: string
+}
+
+export interface AttentionList {
+  /** All matching orders; `orders` holds the oldest few. */
+  count: number
+  orders: AttentionOrder[]
+}
+
+/** GET /api/dashboard/?range= */
 export interface Dashboard {
   branch_name: string
   date: string
@@ -44,8 +64,9 @@ export interface Dashboard {
   }
   on_time_30_days: OnTime
   receivables: { total: string; customers: number; aging: { days: string; amount: string }[] }
-  cash_ups_today: ShiftReport[]
-  last_7_days: { date: string; orders: number; sales: string; collected: string }[]
+  attention: { overdue: AttentionList; not_collected: AttentionList; unpaid: AttentionList }
+  series_range: SeriesRange
+  series: { date: string; orders: number; sales: string; collected: string }[]
   top_items_30_days: { item_name: string; quantity: string; sales: string }[]
 }
 

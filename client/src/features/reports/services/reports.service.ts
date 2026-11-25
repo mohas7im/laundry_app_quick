@@ -4,9 +4,10 @@ import { isAxiosError } from "axios"
 import { apiClient } from "@/lib/api/client"
 import { ENDPOINTS } from "@/lib/api/endpoints"
 import { http } from "@/lib/api/http"
-import type { Dashboard, DailySummary } from "../types"
+import type { Dashboard, DailySummary, SeriesRange } from "../types"
 
-export const getDashboard = () => http.get<Dashboard>(ENDPOINTS.dashboard)
+export const getDashboard = (range: SeriesRange = "7d") =>
+  http.get<Dashboard>(ENDPOINTS.dashboard, { params: { range } })
 
 /** The end-of-day report for one shop day (YYYY-MM-DD). */
 export const getDailySummary = (date: string) => http.get<DailySummary>(ENDPOINTS.reports.daily, { params: { date } })

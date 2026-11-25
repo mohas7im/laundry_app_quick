@@ -21,11 +21,15 @@ def _day(request, name='date', default=None):
         raise serializers.ValidationError({name: 'Use a date like 2026-11-22.'})
 
 
+SERIES_RANGES = {'7d', '30d', 'month'}
+
+
 class DashboardView(APIView):
     """
-    GET /api/dashboard/ — the active branch today: sales and money vs yesterday, the
-    workshop (stages, overdue, ready to collect), on-time %, money owed, cash-ups,
-    the last 7 days and the top items of the last 30 days (dashboard.view).
+    GET /api/dashboard/?range=7d|30d|month — the active branch today: sales and money vs
+    yesterday, the workshop by stage, on-time %, money owed, orders that need attention,
+    sales per day over the range (default 7 days) and the top items of the last 30 days
+    (dashboard.view).
     """
 
     permission_classes = [branch_permission('dashboard.view')]
@@ -36,6 +40,13 @@ class DashboardView(APIView):
         today_start, today_end = q.day_bounds(today)
         yesterday_start, yesterday_end = q.day_bounds(today - timedelta(days=1))
         month_start = today_start - timedelta(days=29)
+
+        series_range = request.query_params.get('range') or '7d'
+        if series_range not in SERIES_RANGES:
+            raise serializers.ValidationError({'range': 'Use 7d, 30d or month.'})
+        first_day = (today.replace(day=1) if series_range == 'month'
+                     else today - timedelta(days=29 if series_range == '30d' else 6))
+
         data = {
             'branch_name': branch.name,
             'date': today.isoformat(),
@@ -46,8 +57,9 @@ class DashboardView(APIView):
             'operations': q.operations(branch.id, now),
             'on_time_30_days': q.on_time(branch.id, month_start, today_end),
             'receivables': q.receivables(branch.id, now),
-            'cash_ups_today': q.shifts_closed(branch.id, today_start, today_end),
-            'last_7_days': q.daily_series(branch.id, today),
+            'attention': q.attention(branch.id, now),
+            'series_range': series_range,
+            'series': q.daily_series(branch.id, first_day, today),
             'top_items_30_days': q.top_items(branch.id, month_start, today_end),
         }
         return BaseResult.ok(data, 'Dashboard retrieved successfully.').to_response()
