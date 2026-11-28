@@ -141,8 +141,19 @@ class OrderApiTests(OrderFixture):
 
     def test_prices_come_from_the_price_list(self):
         res = self.order(lines=[{'item': str(self.kandura.id), 'service': str(self.dry.id), 'quantity': '1',
-                                 'unit_price': '0.01', 'line_total': '0.01'}])  # ignored
+                                 'line_total': '0.01'}])  # ignored
         self.assertEqual(body(res)['total'], '15.00')
+        # Comfort: staff may change a price, only with a reason; the list price is kept on the line
+        res = self.order(lines=[{'item': str(self.kandura.id), 'service': str(self.dry.id), 'quantity': '1',
+                                 'unit_price': '0.01'}])
+        self.assertEqual(res.status_code, 400)
+        res = self.order(lines=[{'item': str(self.kandura.id), 'service': str(self.dry.id), 'quantity': '1',
+                                 'unit_price': '12.00', 'price_reason': 'Regular customer'}])
+        self.assertEqual(body(res)['total'], '12.00')
+        from orders.models import OrderLine
+        line = OrderLine.objects.filter(list_price__isnull=False).latest('order__created_at')
+        self.assertEqual((str(line.list_price), line.price_reason, str(line.unit_price)),
+                         ('15.00', 'Regular customer', '12.00'))
         # express uses the express price and the item's extra days still apply
         res = self.order(is_express=True,
                          lines=[{'item': str(self.kandura.id), 'service': str(self.dry.id), 'quantity': '2'}])
@@ -153,6 +164,21 @@ class OrderApiTests(OrderFixture):
         # no price at all for Laundry / Dry Clean
         res = self.order(lines=[{'item': str(self.laundry.id), 'service': str(self.dry.id), 'quantity': '1'}])
         self.assertIn('has no Dry Clean price', res.data['errors'][0]['description'])
+
+    def test_custom_item(self):
+        # Comfort: a one-off item, priced and named at the counter, using the catalogue's "Custom item"
+        from catalogue.models import Item
+        from orders.models import OrderLine
+        custom = Item.objects.create(name='Custom item', category=self.kandura.category,
+                                     pricing_type=self.kandura.pricing_type)
+        res = self.order(lines=[{'item': str(custom.id), 'service': str(self.dry.id), 'quantity': '2',
+                                 'unit_price': '7.50', 'custom_name': 'Abaya with stones', 'custom_pieces': 2}])
+        self.assertEqual(body(res)['total'], '15.00')
+        line = OrderLine.objects.get(item=custom)
+        self.assertEqual((line.item_name, line.pieces_per_item, line.list_price), ('Abaya with stones', 2, None))
+        no_price = self.order(lines=[{'item': str(custom.id), 'service': str(self.dry.id), 'quantity': '1',
+                                      'custom_name': 'x'}])
+        self.assertEqual(no_price.status_code, 400)
 
     def test_validation(self):
         self.assertEqual(error_fields(self.order(lines=[])), {'lines'})

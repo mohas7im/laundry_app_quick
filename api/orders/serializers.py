@@ -85,6 +85,25 @@ class PieceSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
 
 
+# Comfort: one-off items use the catalogue item named "Custom item" (it has no prices, so it is never a tile)
+CUSTOM_ITEM = 'custom item'
+
+
+def is_custom_item(item) -> bool:
+    return item.name.strip().lower() == CUSTOM_ITEM
+
+
+def price_changes(priced) -> str:
+    """For the timeline: custom items and changed prices of an order."""
+    parts = []
+    for line, unit_price, _min, _result, list_price in priced:
+        if is_custom_item(line['item']):
+            parts.append(f"custom {line['custom_name'].strip()} {unit_price}")
+        elif list_price is not None:
+            parts.append(f"{line['item'].name} {list_price} -> {unit_price} ({line['price_reason'].strip()})")
+    return ('Prices: ' + '; '.join(parts)) if parts else ''
+
+
 class LineInputSerializer(serializers.Serializer):
     item = serializers.PrimaryKeyRelatedField(
         queryset=Item.objects.filter(is_active=True).select_related('pricing_type'))
@@ -95,8 +114,21 @@ class LineInputSerializer(serializers.Serializer):
         required=False, default=list)
     notes = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
     pieces = PieceSerializer(many=True, required=False, default=list)
+    # Comfort: a price changed at the counter (with a reason), and custom items (name, price, pieces)
+    unit_price = serializers.DecimalField(**MONEY, required=False, allow_null=True,
+                                          default=None)
+    price_reason = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
+    custom_name = serializers.CharField(max_length=80, required=False, allow_blank=True, default='')
+    custom_pieces = serializers.IntegerField(min_value=1, max_value=50, required=False, default=1)
 
     def validate(self, attrs):
+        custom = is_custom_item(attrs['item'])
+        if custom and not attrs['custom_name'].strip():
+            raise serializers.ValidationError({'custom_name': 'Write the name of the custom item.'})
+        if custom and attrs['unit_price'] is None:
+            raise serializers.ValidationError({'unit_price': 'Enter the price of the custom item.'})
+        if not custom and attrs['unit_price'] is not None and not attrs['price_reason'].strip():
+            raise serializers.ValidationError({'price_reason': 'Say why the price is changed.'})
         is_unit = attrs['item'].pricing_type.code == Item.PricingType.UNIT
         if is_unit and attrs['quantity'] != attrs['quantity'].to_integral():
             raise serializers.ValidationError({'quantity': 'Use a whole number of pieces.'})
@@ -110,7 +142,8 @@ class LineInputSerializer(serializers.Serializer):
         ]
         while pieces and not any(pieces[-1].values()):
             pieces.pop()
-        if len(pieces) > (int(attrs['quantity']) * attrs['item'].pieces if is_unit else 1):
+        per_item = attrs['custom_pieces'] if custom else attrs['item'].pieces
+        if len(pieces) > (int(attrs['quantity']) * per_item if is_unit else 1):
             raise serializers.ValidationError({'pieces': 'There are more piece notes than pieces.'})
         attrs['pieces'] = pieces
         return attrs
@@ -187,20 +220,29 @@ class OrderInputSerializer(serializers.Serializer):
         priced, extra_days = [], 0
         for index, line in enumerate(attrs['lines']):
             item, service = line['item'], line['service']
+            rates = [UpchargeRate(u.name, u.charge_type.code, u.amount) for u in line['upcharges']]
+            override = line['unit_price']
+            if is_custom_item(item):  # Comfort: priced by staff, for this order only
+                result = price_line(LineInput(unit_price=override, quantity=line['quantity'], upcharges=rates))
+                priced.append((line, override, None, result, None))
+                continue
             price = prices.get((item.pk, service.pk))
-            if price is None:
+            list_unit = None if price is None else (price.express_price if attrs['is_express'] else price.price)
+            if override is None and price is None:
                 errors[f'lines[{index}].item'] = f'{item.name} has no {service.name} price.'
                 continue
-            unit_price = price.express_price if attrs['is_express'] else price.price
-            if unit_price is None:
+            if override is None and list_unit is None:
                 errors[f'lines[{index}].item'] = f'{item.name} has no express {service.name} price.'
                 continue
-            result = price_line(LineInput(
-                unit_price=unit_price, quantity=line['quantity'], min_price=price.min_price,
-                upcharges=[UpchargeRate(u.name, u.charge_type.code, u.amount) for u in line['upcharges']],
-            ))
-            priced.append((line, unit_price, price.min_price, result))
-            extra_days = max(extra_days, price.extra_days)
+            # Comfort: a price changed at the counter wins (no minimum); the list price is kept for the record
+            changed = override is not None and override != list_unit
+            unit_price = override if changed else list_unit
+            min_price = None if changed or price is None else price.min_price
+            result = price_line(LineInput(unit_price=unit_price, quantity=line['quantity'], min_price=min_price,
+                                          upcharges=rates))
+            priced.append((line, unit_price, min_price, result, list_unit if changed else None))
+            if price is not None:
+                extra_days = max(extra_days, price.extra_days)
 
         # piece tags: names from their lists
         if any(line['pieces'] for line in attrs['lines']):
@@ -245,7 +287,7 @@ class OrderInputSerializer(serializers.Serializer):
             raise serializers.ValidationError(errors)
 
         attrs['priced'] = priced
-        attrs['totals'] = order_totals([r.total for *_, r in priced], attrs['discount_type'], value,
+        attrs['totals'] = order_totals([p[3].total for p in priced], attrs['discount_type'], value,
                                        conf['vat_rate'])
         return attrs
 
@@ -275,12 +317,15 @@ class OrderInputSerializer(serializers.Serializer):
         return fields
 
     def _save_lines(self, order):
-        for position, (line, unit_price, min_price, result) in enumerate(self.validated_data['priced']):
+        for position, (line, unit_price, min_price, result, list_price) in enumerate(self.validated_data['priced']):
+            custom = is_custom_item(line['item'])
             order_line = OrderLine.objects.create(
-                order=order, item=line['item'], service=line['service'], item_name=line['item'].name,
+                order=order, item=line['item'], service=line['service'],
+                item_name=line['custom_name'].strip() if custom else line['item'].name,
                 service_name=line['service'].name, pricing_type=line['item'].pricing_type.code,
-                quantity=line['quantity'], pieces_per_item=line['item'].pieces, unit_price=unit_price,
-                min_price=min_price,
+                quantity=line['quantity'], pieces_per_item=line['custom_pieces'] if custom else line['item'].pieces,
+                unit_price=unit_price, min_price=min_price, list_price=list_price,
+                price_reason=line['price_reason'].strip() if list_price is not None else '',
                 upcharge_total=result.upcharge_total, line_total=result.total, notes=line['notes'].strip(),
                 pieces=line['pieces'], position=position,
             )
@@ -334,7 +379,8 @@ class OrderCreateSerializer(OrderInputSerializer):
         self._save_lines(order)
         if data['paid_amount'] > 0:
             record_payment(order, data['paid_amount'], data['payment_method'], user)  # adds to paid_amount
-        OrderStatusHistory.objects.create(order=order, status=Order.Status.RECEIVED, changed_by=user)
+        OrderStatusHistory.objects.create(order=order, status=Order.Status.RECEIVED, changed_by=user,
+                                          note=price_changes(data['priced'])[:200])
         self._save_customer_notes()
         return order
 
@@ -385,6 +431,8 @@ class OrderUpdateSerializer(OrderInputSerializer):
         order.lines.all().delete()
         self._save_lines(order)
         note = f'Edited: {data["reason"].strip()}'
+        if price_changes(data['priced']):
+            note += f' · {price_changes(data["priced"])}'
         if data['approver'] is not None:
             note += f' (approved by {data["approver"].full_name})'
         OrderStatusHistory.objects.create(order=order, status=order.status,
@@ -432,7 +480,8 @@ class OrderLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderLine
         fields = ['id', 'item', 'service', 'item_name', 'service_name', 'pricing_type', 'quantity', 'unit_price',
-                  'min_price', 'upcharges', 'upcharge_total', 'line_total', 'notes', 'pieces']
+                  'min_price', 'upcharges', 'upcharge_total', 'line_total', 'notes', 'pieces',
+                  'list_price', 'price_reason', 'pieces_per_item']
 
     def get_quantity(self, line):
         return quantity_text(line.quantity)

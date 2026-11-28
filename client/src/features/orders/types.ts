@@ -90,6 +90,12 @@ export interface OrderLineRequest {
   notes?: string
   /** Piece 1 first; empty pieces at the end can be left out. */
   pieces?: PieceNote[]
+  /** Comfort: a price changed at the counter (needs price_reason), or a custom item's price. */
+  unit_price?: string | null
+  price_reason?: string
+  /** Comfort: custom items ("Custom item" in the catalogue) carry their own name and pieces. */
+  custom_name?: string
+  custom_pieces?: number
 }
 
 export interface OrderRequest {
@@ -227,6 +233,10 @@ export interface OrderLine {
   line_total: string
   notes: string
   pieces: PieceNote[]
+  /** Comfort: the price list's price when staff changed it (null = not changed), and why. */
+  list_price?: string | null
+  price_reason?: string
+  pieces_per_item?: number
 }
 
 export interface Order extends OrderListRow {
