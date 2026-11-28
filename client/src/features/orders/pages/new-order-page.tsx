@@ -4,6 +4,7 @@ import {
   CircleAlertIcon,
   MinusIcon,
   PackageIcon,
+  PencilIcon,
   PlusIcon,
   SearchIcon,
   TagIcon,
@@ -27,6 +28,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -64,6 +66,12 @@ type CartLine = {
   quantity: string
   upcharges: string[]
   pieces: PieceNote[]
+  /** Comfort: price changed at the counter (with a reason); custom items always have one. */
+  price?: string
+  priceReason?: string
+  /** Comfort: a one-off item for this order only (the catalogue's "Custom item"). */
+  customName?: string
+  customPieces?: string
 }
 
 /** Everything the screen starts with: empty, or from an order (copy or edit). */
@@ -181,6 +189,8 @@ const emptyDraft: Draft = {
 
 // Comfort: delivery / pickup charge. Prices include VAT; the AED 20 limit is before VAT.
 const DELIVERY_ITEM = "delivery charge"
+// Comfort: one-off items use this catalogue item (no prices, so never a tile)
+const CUSTOM_ITEM = "custom item"
 const DELIVERY_UNDER = 2000 // fils, excl. VAT
 const DELIVERY_NOTE = "Delivery / Pickup"
 const DELIVERY_WAIVED = "Delivery charge waived: "
@@ -210,6 +220,7 @@ function draftFrom(order: Order, customer: Customer | null, catalogue: PosCatalo
   const services = new Set(catalogue.services.map((s) => s.id))
   const upcharges = new Set(catalogue.upcharges.map((u) => u.id))
   const kept = order.lines.filter((l) => items.has(l.item) && services.has(l.service))
+  const customId = catalogue.items.find((i) => i.name.trim().toLowerCase() === CUSTOM_ITEM)?.id
   return {
     customer,
     express: order.is_express,
@@ -220,6 +231,16 @@ function draftFrom(order: Order, customer: Customer | null, catalogue: PosCatalo
       quantity: l.quantity,
       upcharges: l.upcharges.map((u) => u.upcharge).filter((id) => upcharges.has(id)),
       pieces: l.pieces,
+      ...(l.item === customId
+        ? {
+            price: l.unit_price,
+            priceReason: l.price_reason ?? "",
+            customName: l.item_name,
+            customPieces: String(l.pieces_per_item ?? 1),
+          }
+        : l.list_price
+          ? { price: l.unit_price, priceReason: l.price_reason ?? "" }
+          : {}),
     })),
     bagPieces: order.bag_drop_pieces ? String(order.bag_drop_pieces) : "",
     ...splitNotes(order.notes, catalogue.order_notes.map((n) => n.name)),
@@ -275,12 +296,16 @@ function PosScreen({
   const deliveryPrice = deliveryItem
     ? catalogue.prices.find((p) => p.item === deliveryItem.id && p.price_list === catalogue.price_list.id) ?? null
     : null
+  const customItem = catalogue.items.find((i) => i.name.trim().toLowerCase() === CUSTOM_ITEM) ?? null
   const isDeliveryLine = (l: { item: string }) => !!deliveryItem && l.item === deliveryItem.id
   const [lines, setLines] = useState<CartLine[]>(() => initial.lines.filter((l) => !isDeliveryLine(l)))
   const [initialDelivery] = useState(() => splitDelivery(initial.notes))
   const [delivery, setDelivery] = useState(initial.lines.some(isDeliveryLine) || initialDelivery.delivery)
   const [waived, setWaived] = useState(!!initialDelivery.waived)
   const [waiveReason, setWaiveReason] = useState(initialDelivery.waived)
+  type CustomForm = { name: string; quantity: string; price: string; pieces: string; service: string }
+  const [custom, setCustom] = useState<CustomForm | null>(null)
+  const [customError, setCustomError] = useState("")
   const [bagDrop, setBagDrop] = useState(!!initial.bagPieces)
   const [bagPieces, setBagPieces] = useState(initial.bagPieces)
   const [chips, setChips] = useState<string[]>(initial.chips)
@@ -320,17 +345,19 @@ function PosScreen({
 
   const priced = lines.map((line) => {
     const p = priceOf(line.item, line.service)
-    const unit = unitPriceOf(line.item, line.service)
+    const listUnit = unitPriceOf(line.item, line.service)
+    const changed = line.price !== undefined
+    const unit = changed ? line.price! : listUnit
     const total =
-      unit === null || !p
+      unit === null || (!p && !changed)
         ? null
         : lineTotal({
             unitPrice: toCents(unit),
             quantity: Number(line.quantity) || 0,
-            minPrice: p.min_price === null ? null : toCents(p.min_price),
+            minPrice: changed || !p || p.min_price === null ? null : toCents(p.min_price),
             upcharges: line.upcharges.map((id) => upcharges.get(id)!).filter(Boolean),
           })
-    return { line, unit, total }
+    return { line, unit, listUnit, total }
   })
   const missingPrice = priced.filter((p) => p.total === null)
   // delivery / pickup under AED 20 before VAT: + the delivery charge, unless waived with a reason
@@ -382,14 +409,15 @@ function PosScreen({
   const tiles = useMemo(() => {
     const term = search.trim().toLowerCase()
     return catalogue.items
-      .filter((i) => !isDeliveryLine({ item: i.id }) && priceOf(i.id, serviceId) && (!term || i.name.toLowerCase().includes(term)))
+      .filter((i) => !isDeliveryLine({ item: i.id }) && i.id !== customItem?.id && priceOf(i.id, serviceId) && (!term || i.name.toLowerCase().includes(term)))
       .sort((a, b) => (usage.get(tileKey(b.id, serviceId)) ?? 0) - (usage.get(tileKey(a.id, serviceId)) ?? 0))
   }, [catalogue, priceOf, serviceId, search, usage])
 
   // one tag per physical piece: a 2-piece suit × 3 = 6
   const pieceCount = (line: CartLine) => {
     const item = items.get(line.item)
-    return item?.pricing_type === "unit" ? Math.max(0, Math.floor(Number(line.quantity) || 0)) * (item.pieces || 1) : 1
+    const per = line.customName !== undefined ? Number(line.customPieces) || 1 : item?.pieces || 1
+    return item?.pricing_type === "unit" ? Math.max(0, Math.floor(Number(line.quantity) || 0)) * per : 1
   }
 
   const countInCart = (item: string) =>
@@ -443,7 +471,17 @@ function PosScreen({
     const orderLines: OrderLineRequest[] = lines.map((l) => {
       const pieces = l.pieces.slice(0, pieceCount(l))
       while (pieces.length && isEmptyPiece(pieces[pieces.length - 1]!)) pieces.pop()
-      return { item: l.item, service: l.service, quantity: l.quantity || "0", upcharges: l.upcharges, pieces }
+      return {
+        item: l.item,
+        service: l.service,
+        quantity: l.quantity || "0",
+        upcharges: l.upcharges,
+        pieces,
+        ...(l.price !== undefined ? { unit_price: l.price || "0", price_reason: (l.priceReason ?? "").trim() } : {}),
+        ...(l.customName !== undefined
+          ? { custom_name: l.customName.trim(), custom_pieces: Number(l.customPieces) || 1 }
+          : {}),
+      }
     })
     if (deliveryCents && deliveryItem && deliveryPrice)
       orderLines.push({ item: deliveryItem.id, service: deliveryPrice.service, quantity: "1", upcharges: [], pieces: [] })
@@ -492,6 +530,15 @@ function PosScreen({
     if (submitting) return
     if (!customer) {
       setErrors({ customer: "Choose the customer first." })
+      return
+    }
+    const badPrice = lines.find((l) => l.price !== undefined && (l.price === "" || Number(l.price) < 0))
+    if (badPrice) {
+      toast.error("Enter a valid price for every changed line.")
+      return
+    }
+    if (lines.some((l) => l.price !== undefined && l.customName === undefined && !(l.priceReason ?? "").trim())) {
+      toast.error("Write why the price is changed.")
       return
     }
     if (deliveryDue && waived && !waiveReason.trim()) {
@@ -592,6 +639,19 @@ function PosScreen({
                 ? `No items match “${search.trim()}”.`
                 : "No items are priced for this service yet. Set them on the Prices page."}
             </p>
+          )}
+          {customItem && (
+            <Button
+              variant="outline"
+              className="mt-3 w-full border-dashed"
+              onClick={() => {
+                setCustomError("")
+                setCustom({ name: "", quantity: "1", price: "", pieces: "1", service: serviceId })
+              }}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Custom item
+            </Button>
           )}
         </CardContent>
       </Card>
@@ -703,7 +763,7 @@ function PosScreen({
           {/* lines */}
           <div className="grid gap-2">
             {priced.length ? (
-              priced.map(({ line, unit, total }) => {
+              priced.map(({ line, unit, listUnit, total }) => {
                 const item = items.get(line.item)!
                 const service = services.get(line.service)!
                 const suffix = UNIT_SUFFIX[item.pricing_type]
@@ -712,10 +772,12 @@ function PosScreen({
                   <div key={line.key} className="grid gap-2 rounded-lg border p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="grid min-w-0">
-                        <span className="truncate font-medium">{item.name}</span>
+                        <span className="truncate font-medium">{line.customName || item.name}</span>
                         <span className="text-xs text-muted-foreground">
                           {service.name} ·{" "}
                           {unit === null ? "no price" : `${formatMoney(unit)}${suffix ? ` / ${suffix}` : " each"}`}
+                          {line.customName === undefined && line.price !== undefined && listUnit !== null &&
+                            ` (list ${formatMoney(listUnit)})`}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -787,6 +849,17 @@ function PosScreen({
                         )}
                       </Button>
 
+                      {line.price === undefined && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => updateLine(line.key, { price: unit ?? "", priceReason: "" })}
+                        >
+                          <PencilIcon data-icon="inline-start" />
+                          Price
+                        </Button>
+                      )}
+
                       {catalogue.upcharges.length > 0 && (
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>
@@ -831,6 +904,43 @@ function PosScreen({
                             </button>
                           </Badge>
                         ))}
+                      </div>
+                    )}
+                    {line.price !== undefined && (
+                      <div className="grid gap-1.5 rounded-md bg-muted/50 p-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {line.customName !== undefined ? "Price each" : "New price each"}
+                          </span>
+                          <Input
+                            className="h-8 w-24 text-right tabular-nums"
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={0.01}
+                            aria-label={`${line.customName || item.name} price`}
+                            value={line.price}
+                            onChange={(e) => updateLine(line.key, { price: e.target.value })}
+                          />
+                          {line.customName === undefined && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => updateLine(line.key, { price: undefined, priceReason: undefined })}
+                            >
+                              Use list price
+                            </Button>
+                          )}
+                        </div>
+                        {line.customName === undefined && (
+                          <Input
+                            className="h-8"
+                            aria-label="Why the price is changed"
+                            placeholder="Why? e.g. regular customer rate"
+                            value={line.priceReason ?? ""}
+                            onChange={(e) => updateLine(line.key, { priceReason: e.target.value })}
+                          />
+                        )}
                       </div>
                     )}
                     {tagged.some((p) => !isEmptyPiece(p)) && (
@@ -1099,6 +1209,104 @@ function PosScreen({
           </Button>
         </CardFooter>
       </Card>
+
+      <Dialog open={custom !== null} onOpenChange={(open) => !open && setCustom(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Custom item</DialogTitle>
+            <DialogDescription>An item that is not in the list, for this order only.</DialogDescription>
+          </DialogHeader>
+          {custom && (
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel htmlFor="custom-name">Name</FieldLabel>
+                <Input
+                  id="custom-name"
+                  autoFocus
+                  maxLength={80}
+                  value={custom.name}
+                  onChange={(e) => setCustom({ ...custom, name: e.target.value })}
+                />
+              </Field>
+              <div className="grid grid-cols-3 gap-2">
+                <Field>
+                  <FieldLabel htmlFor="custom-qty">Quantity</FieldLabel>
+                  <Input
+                    id="custom-qty"
+                    inputMode="numeric"
+                    value={custom.quantity}
+                    onChange={(e) => setCustom({ ...custom, quantity: e.target.value.replace(/\D/g, "") })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="custom-price">Price each (AED)</FieldLabel>
+                  <Input
+                    id="custom-price"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.01}
+                    value={custom.price}
+                    onChange={(e) => setCustom({ ...custom, price: e.target.value })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="custom-pieces">Pieces each</FieldLabel>
+                  <Input
+                    id="custom-pieces"
+                    inputMode="numeric"
+                    value={custom.pieces}
+                    onChange={(e) => setCustom({ ...custom, pieces: e.target.value.replace(/\D/g, "") })}
+                  />
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel htmlFor="custom-service">Section</FieldLabel>
+                <SelectField
+                  id="custom-service"
+                  value={custom.service}
+                  onValueChange={(v) => v && setCustom({ ...custom, service: v })}
+                  options={catalogue.services.map((s) => ({ value: s.id, label: s.name }))}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">Price includes VAT, like every price.</p>
+              {customError && <p className="text-sm text-destructive">{customError}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustom(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!custom || !customItem) return
+                const name = custom.name.trim()
+                if (!name) return setCustomError("Write the item name.")
+                if (!(Number(custom.quantity) >= 1)) return setCustomError("Quantity must be at least 1.")
+                if (custom.price === "" || Number(custom.price) < 0) return setCustomError("Enter the price.")
+                setLines((prev) => [
+                  ...prev,
+                  {
+                    key: crypto.randomUUID(),
+                    item: customItem.id,
+                    service: custom.service,
+                    quantity: String(Math.floor(Number(custom.quantity))),
+                    upcharges: [],
+                    pieces: [],
+                    price: custom.price,
+                    priceReason: "",
+                    customName: name,
+                    customPieces: custom.pieces || "1",
+                  },
+                ])
+                setCustom(null)
+              }}
+            >
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PieceNotesDialog
         title={openLine ? `${items.get(openLine.item)?.name} · ${services.get(openLine.service)?.name}` : null}

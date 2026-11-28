@@ -108,6 +108,9 @@ class OrderLine(models.Model):
     min_price = models.DecimalField(**MONEY, null=True, blank=True)
     upcharge_total = models.DecimalField(**MONEY, default=0)
     line_total = models.DecimalField(**MONEY)
+    # Comfort: staff changed the price at the counter -> the price list's price then, and why (null = not changed)
+    list_price = models.DecimalField(**MONEY, null=True, blank=True)
+    price_reason = models.CharField(max_length=200, blank=True, default='')
     notes = models.CharField(max_length=200, blank=True)
     # per-piece tags: [{"colours": ["Navy"], "damage": ["Button missing"], "stains": [], "note": ""}, …]
     # (names copied from the ITEM_COLOUR / ITEM_DAMAGE / ITEM_STAIN lists; piece 1 first)
